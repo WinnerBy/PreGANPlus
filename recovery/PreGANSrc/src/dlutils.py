@@ -292,73 +292,78 @@ class Cholesky(torch.autograd.Function):
         s = torch.mm(linv.t(), torch.mm(inner, linv))
         return s
 
-class GATLayer(nn.Module):
-    def __init__(self, g, in_dim, out_dim):
-        super(GATLayer, self).__init__()
-        self.g = g
-        # equation (1)
-        self.fc = nn.Linear(in_dim, out_dim, bias=False)
-        # equation (2)
-        self.attn_fc = nn.Linear(2 * out_dim, 1, bias=False)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        """Reinitialize learnable parameters."""
-        gain = nn.init.calculate_gain('relu')
-        nn.init.xavier_normal_(self.fc.weight, gain=gain)
-        nn.init.xavier_normal_(self.attn_fc.weight, gain=gain)
-
-    def edge_attention(self, edges):
-        # edge UDF for equation (2)
-        z2 = torch.cat([edges.src['z'], edges.dst['z']], dim=1)
-        a = self.attn_fc(z2)
-        return {'e': F.leaky_relu(a)}
-
-    def message_func(self, edges):
-        # message UDF for equation (3) & (4)
-        return {'z': edges.src['z'], 'e': edges.data['e']}
-
-    def reduce_func(self, nodes):
-        # reduce UDF for equation (3) & (4)
-        # equation (3)
-        alpha = F.softmax(nodes.mailbox['e'], dim=1)
-        # equation (4)
-        h = torch.sum(alpha * nodes.mailbox['z'], dim=1)
-        return {'h': h}
-
-    def forward(self, h):
-        # equation (1)
-        z = self.fc(h)
-        self.g.ndata['z'] = z
-        # equation (2)
-        self.g.apply_edges(self.edge_attention)
-        # equation (3) & (4)
-        self.g.update_all(self.message_func, self.reduce_func)
-        return self.g.ndata.pop('h')
-    
-class MultiHeadGATLayer(nn.Module):
-    def __init__(self, g, in_dim, out_dim, num_heads, merge='cat'):
-        super(MultiHeadGATLayer, self).__init__()
-        self.heads = nn.ModuleList()
-        for i in range(num_heads):
-            self.heads.append(GATLayer(g, in_dim, out_dim))
-        self.merge = merge
-
-    def forward(self, h):
-        head_outs = [attn_head(h) for attn_head in self.heads]
-        if self.merge == 'cat':
-            # concat on the output feature dimension (dim=1)
-            return torch.cat(head_outs, dim=1)
-        else:
-            # merge using average
-            return torch.mean(torch.stack(head_outs))
+# 修正GAT注意力头的实现
+class GATHead(nn.Module):
+    def __init__(self, graph, in_feats, out_feats):
+        super(GATHead, self).__init__()
+        self.g = graph  # 图对象（16个节点）
+        self.num_nodes = graph.number_of_nodes()  # 明确记录节点数量
+        self.fc = nn.Linear(in_feats, out_feats, bias=False)  # 特征映射
+        self.attn_fc = nn.Linear(2 * out_feats, 1, bias=False)  # 注意力评分
         
-class GAT(nn.Module):
-    def __init__(self, g, in_dim, out_dim, num_heads = 1):
-        super(GAT, self).__init__()
-        self.layer1 = MultiHeadGATLayer(g, in_dim, out_dim, num_heads)
+    def forward(self, h):
+        # h的输入形状：[batch_size, seq_len, num_nodes, in_feats] → [1, 3, 16, 3]
+        batch_size, seq_len, num_nodes, in_feats = h.shape
+        
+        # 1. 调整维度顺序：将节点维度提前
+        h = h.permute(0, 2, 1, 3)  # [1, 16, 3, 3]
+        
+        # 2. 展平batch和节点维度：[batch*nodes, seq, feats]
+        h = h.reshape(-1, seq_len, in_feats)  # [1*16, 3, 3] = [16, 3, 3]
+        
+        # 3. 特征映射：[16, 3, 3] → [16, 3, out_feats]
+        z = self.fc(h)  # 假设out_feats=16 → [16, 3, 16]
+        
+        # 4. 计算边注意力（关键修复）
+        # 提取所有边的源节点和目标节点索引
+        src, dst = self.g.edges()  # 对于16节点全连接图，应有16*16=256条边
+        
+        # 提取边的源节点和目标节点特征 → [256, 3, 16]
+        src_z = z[src]  # 按源节点索引提取特征
+        dst_z = z[dst]  # 按目标节点索引提取特征
+        
+        # 拼接源和目标特征 → [256, 3, 32]（32=16*2）
+        edge_feats = torch.cat([src_z, dst_z], dim=2)
+        
+        # 计算注意力分数 → [256, 3, 1]
+        edge_scores = F.leaky_relu(self.attn_fc(edge_feats.reshape(-1, 2 * z.shape[-1])).reshape(-1, seq_len, 1))
+        
+        # 5. 为每条边赋值注意力分数（而非节点）
+        self.g.edata['e'] = edge_scores  # 边特征赋值，256条边对应256个分数
+        
+        # 6. 注意力归一化（按目标节点聚合）
+        self.g.edata['a'] = dgl.softmax_edges(self.g, 'e')  # 对每条边的分数进行归一化
+        
+        # 7. 消息传递与聚合
+        self.g.ndata['z'] = z  # 节点特征赋值，16节点对应16个特征
+        self.g.update_all(
+            dgl.function.src_mul_edge('z', 'a', 'm'),  # 源节点特征 × 边注意力分数
+            dgl.function.sum('m', 'h')  # 聚合到目标节点
+        )
+        
+        # 8. 恢复原始维度顺序
+        h_out = self.g.ndata['h'].reshape(batch_size, num_nodes, seq_len, -1)  # [1, 16, 3, 16]
+        h_out = h_out.permute(0, 2, 1, 3)  # [1, 3, 16, 16]
+        
+        return h_out
 
+# GAT层封装
+class GATLayer(nn.Module):
+    def __init__(self, graph, in_feats, out_feats, num_heads=1):
+        super(GATLayer, self).__init__()
+        self.heads = nn.ModuleList()
+        for _ in range(num_heads):
+            self.heads.append(GATHead(graph, in_feats, out_feats))
+        
+    def forward(self, h):
+        return torch.mean(torch.stack([attn_head(h) for attn_head in self.heads]), dim=0)
+
+# 完整GAT模型
+class GAT(nn.Module):
+    def __init__(self, graph, in_feats, out_feats, num_heads=1):
+        super(GAT, self).__init__()
+        self.layer1 = GATLayer(graph, in_feats, out_feats, num_heads)
+        
     def forward(self, h):
         h = self.layer1(h)
-        h = F.elu(h)
         return h

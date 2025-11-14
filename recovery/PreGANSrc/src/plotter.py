@@ -210,19 +210,33 @@ class GAN_Plotter():
 	def plot_heatmap(self, title, name1, name2, data1, data2):
 		fig, (ax1, ax2) = plt.subplots(2, 1,gridspec_kw={'height_ratios': [0.2, 1]}, figsize=(3,1.5))
 		ax1.set_title(title)
-		yticks = np.linspace(0, self.n_hosts, 2, dtype=np.int32)
+		yticks = np.linspace(0, self.n_hosts, 2, dtype=np.int32) if self.n_hosts > 0 else np.array([0])
 		h1 = sns.heatmap(data1,cmap="YlGnBu", yticklabels=[0], linewidth=0.01, ax = ax1)
 		dcmap = LinearSegmentedColormap.from_list('Custom', ['w', 'r', 'g', 'b'], 4)
 		data2 = (data2 + 1).transpose()
 		h2 = sns.heatmap(data2,cmap=dcmap, yticklabels=yticks, linewidth=0.01, ax = ax2, vmin=0, vmax=3)
 		ax1.set_yticks([0]); ax2.set_yticks(yticks)
 		ax2.set_yticklabels(yticks, rotation=0)
-		xticks1 = np.linspace(0, data1.shape[1], 5, dtype=np.int32); xticks2 = np.linspace(0, data2.shape[1], 5, dtype=np.int32)
+		xticks1 = np.linspace(0, data1.shape[1], 5, dtype=np.int32) if data1.shape[1] > 0 else np.array([0]); xticks2 = np.linspace(0, data2.shape[1], 5, dtype=np.int32) if data2.shape[1] > 0 else np.array([0])
 		ax1.set_xticks(xticks1); ax2.set_xticks(xticks2); ax2.set_xticklabels(xticks2, rotation=0)
 		ax1.set_xticklabels(xticks1, rotation=0)
+		# 确保X轴范围有效以避免余刻度计算错误
+		if len(xticks1) <= 1:
+			ax1.set_xlim(xticks1[0]-0.5 if len(xticks1) > 0 else 0, xticks1[0]+0.5 if len(xticks1) > 0 else 1)
+		else:
+			ax1.set_xlim(xticks1[0], xticks1[-1])
+		if len(xticks2) <= 1:
+			ax2.set_xlim(xticks2[0]-0.5 if len(xticks2) > 0 else 0, xticks2[0]+0.5 if len(xticks2) > 0 else 1)
+		else:
+			ax2.set_xlim(xticks2[0], xticks2[-1])
+		# 禁用次要刻度以避免余刻度计算错误
+		ax1.minorticks_off()
+		ax2.minorticks_off()
 		ax2.set_xlabel('Timestamp'); ax1.set_ylabel(name1)
 		ax2.set_ylabel(name2); 
 		colorbar = h2.collections[0].colorbar; colorbar.set_ticklabels(['None', 'CPU', 'RAM', 'Disk'])
+		# 禁用colorbar的次要刻度
+		colorbar.ax.minorticks_off()
 		fig.savefig(self.prefix2 + f'{title}_{name1}_{name2}.pdf')
 		plt.close()
 
@@ -230,15 +244,27 @@ class GAN_Plotter():
 		fig, (ax1, ax2) = plt.subplots(2, 1,gridspec_kw={'height_ratios': [0.2, 1]}, figsize=(3,1.5))
 		ax1.set_title(title)
 		ax1.set_ylabel(name1)
-		yticks = np.linspace(0, self.n_hosts, 10, dtype=np.int32)
+		yticks = np.linspace(0, self.n_hosts, 10, dtype=np.int32) if self.n_hosts > 0 else np.array([0])
 		data2 = data2.transpose()
 		h1 = sns.heatmap(data1,cmap="YlGnBu", yticklabels=[0], linewidth=0.01, ax = ax1)
 		h2 = sns.heatmap(data2,cmap="YlGnBu", yticklabels=yticks, linewidth=0.01, ax = ax2)
 		ax1.set_yticks([0]); ax2.set_yticks(yticks)
 		ax2.set_yticklabels(yticks, rotation=0)
-		xticks1 = np.linspace(0, data1.shape[1], 5, dtype=np.int32); xticks2 = np.linspace(0, data2.shape[1], 5, dtype=np.int32)
+		xticks1 = np.linspace(0, data1.shape[1], 5, dtype=np.int32) if data1.shape[1] > 0 else np.array([0]); xticks2 = np.linspace(0, data2.shape[1], 5, dtype=np.int32) if data2.shape[1] > 0 else np.array([0])
 		ax1.set_xticks(xticks1); ax2.set_xticks(xticks2); ax2.set_xticklabels(xticks2, rotation=0)
 		ax1.set_xticklabels(xticks1, rotation=0)
+		# 确保X轴范围有效以避免余刻度计算错误
+		if len(xticks1) <= 1:
+			ax1.set_xlim(xticks1[0]-0.5 if len(xticks1) > 0 else 0, xticks1[0]+0.5 if len(xticks1) > 0 else 1)
+		else:
+			ax1.set_xlim(xticks1[0], xticks1[-1])
+		if len(xticks2) <= 1:
+			ax2.set_xlim(xticks2[0]-0.5 if len(xticks2) > 0 else 0, xticks2[0]+0.5 if len(xticks2) > 0 else 1)
+		else:
+			ax2.set_xlim(xticks2[0], xticks2[-1])
+		# 禁用次要刻度以避免余刻度计算错误
+		ax1.minorticks_off()
+		ax2.minorticks_off()
 		ax2.set_xlabel('Timestamp'); ax1.set_ylabel(name1)
 		ax2.set_ylabel(name2); 
 		fig.savefig(self.prefix2 + f'{title}_{name1}_{name2}.pdf')

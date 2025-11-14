@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 simulator/workload/datasets
+!simulator/workload/datasets/bitbrain/rnd/
+!simulator/workload/datasets/bitbrain/rnd/**
 scheduler/A2C/dataset
 .vagrant
 framework/agent/DockerImages
@@ -138,3 +140,8 @@ dmypy.json
 todo.txt
 *.pdf
 graphernew.py
+
+
+# checkpoint
+*.ckpt
+*.ckpt.bak

@@ -129,7 +129,7 @@ def initalizeEnvironment(environment, logger):
 		env = Simulator(TOTAL_POWER, ROUTER_BW, scheduler, recovery, stats, CONTAINERS, INTERVAL_TIME, hostlist)
 
 	# Execute first step
-	torch.compile()
+	# torch.compile()
 	newcontainerinfos = workload.generateNewContainers(env.interval) # New containers info
 	deployed = env.addContainersInit(newcontainerinfos) # Deploy new containers and get container IDs
 	start = time()
