@@ -63,6 +63,8 @@ def mean_confidence_interval(data, confidence=0.90):
 
 PATH = 'all_datasets/' + env + '/'
 SAVE_PATH = 'results/' + env + '/'
+import os
+os.makedirs(SAVE_PATH, exist_ok=True)
 
 Models = ['PreGAN', 'CMODLB', 'PCFT', 'ECLB', 'DFTM', 'GOBI'] 
 xLabel = 'Execution Time (minutes)'
@@ -117,6 +119,17 @@ if env == 'framework':
 		sla[app] = response_times[int(percentile*len(response_times))]
 else:
 	sla = {}
+	# If the configured sla_baseline is missing or has no data, pick first available model
+	if sla_baseline not in all_stats or all_stats[sla_baseline] is None:
+		found = None
+		for k, v in all_stats.items():
+			if v is not None:
+				found = k
+				break
+		if found is None:
+			raise RuntimeError('No stats available to compute SLA baseline')
+		print(f"Warning: SLA baseline '{sla_baseline}' missing; using '{found}' instead")
+		sla_baseline = found
 	r = all_stats[sla_baseline].allcontainerinfo[-1]
 	start, end = np.array(r['start']), np.array(r['destroy'])
 	response_times = np.fmax(0, end - start)
@@ -351,28 +364,59 @@ for ylabel in yLabelsStatic:
 		stats = all_stats[model]
 		# Major metrics
 		if ylabel == 'Average Energy (Kilowatt-hr)':
-			d = np.array([i['energytotalinterval'] for i in stats.metrics])/1000 if stats else np.array([])
-			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats else np.array([1])
-			Data[ylabel][model], CI[ylabel][model] = d[d2>0]/d2[d2>0], 0
+			d = np.array([i['energytotalinterval'] for i in stats.metrics])/1000 if stats and len(stats.metrics)>0 else np.array([])
+			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			if d.size == 0 or d2.size == 0:
+				Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+			else:
+				mask = d2 > 0
+				if mask.sum() == 0:
+					Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+				else:
+					Data[ylabel][model], CI[ylabel][model] = d[mask] / d2[mask], 0
 		if ylabel == 'Interval Energy (Kilowatt-hr)':
 			d = np.array([i['energytotalinterval'] for i in stats.metrics])/1000 if stats else np.array([0])
 			Data[ylabel][model], CI[ylabel][model] = d, mean_confidence_interval(d)
 		if ylabel == 'Average Interval Energy (Kilowatt-hr)':
-			d = np.array([i['energytotalinterval'] for i in stats.metrics])/1000 if stats else np.array([0])
-			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats else np.array([1])
-			Data[ylabel][model], CI[ylabel][model] = d[d2>0]/d2[d2>0], mean_confidence_interval(d[d2>0]/d2[d2>0])
+			d = np.array([i['energytotalinterval'] for i in stats.metrics])/1000 if stats and len(stats.metrics)>0 else np.array([])
+			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			if d.size == 0 or d2.size == 0:
+				Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+			else:
+				mask = d2 > 0
+				if mask.sum() == 0:
+					Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+				else:
+					vals = d[mask] / d2[mask]
+					Data[ylabel][model], CI[ylabel][model] = vals, mean_confidence_interval(vals)
 		if ylabel == 'Number of completed tasks per interval':
 			d = np.array([i['numdestroyed'] for i in stats.metrics]) if stats else np.array([0])
 			Data[ylabel][model], CI[ylabel][model] = d, mean_confidence_interval(d)
 		if ylabel == 'Average Response Time (seconds)':
-			d = np.array([max(0, i['avgresponsetime']) for i in stats.metrics]) if stats else np.array([0])
-			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats else np.array([1])
-			Data[ylabel][model], CI[ylabel][model] = d[d2>0], mean_confidence_interval(d[d2>0])
+			d = np.array([max(0, i['avgresponsetime']) for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			if d.size == 0 or d2.size == 0:
+				Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+			else:
+				mask = d2 > 0
+				if mask.sum() == 0:
+					Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+				else:
+					vals = d[mask]
+					Data[ylabel][model], CI[ylabel][model] = vals, mean_confidence_interval(vals)
 		if ylabel == 'Average Execution Time (seconds)':
-			d = np.array([max(0, i['avgresponsetime']) for i in stats.metrics]) if stats else np.array([0])
-			d1 = np.array([i['avgmigrationtime'] for i in stats.metrics]) if stats else np.array([0])
-			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats else np.array([1])
-			Data[ylabel][model], CI[ylabel][model] = np.maximum(0, d[d2>0] - d1[d2>0]), mean_confidence_interval(d[d2>0] - d1[d2>0])
+			d = np.array([max(0, i['avgresponsetime']) for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			d1 = np.array([i['avgmigrationtime'] for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			d2 = np.array([i['numdestroyed'] for i in stats.metrics]) if stats and len(stats.metrics)>0 else np.array([])
+			if d.size == 0 or d1.size == 0 or d2.size == 0:
+				Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+			else:
+				mask = d2 > 0
+				if mask.sum() == 0:
+					Data[ylabel][model], CI[ylabel][model] = np.array([]), 0
+				else:
+					vals = np.maximum(0, d[mask] - d1[mask])
+					Data[ylabel][model], CI[ylabel][model] = vals, mean_confidence_interval(vals)
 		if 'f' in env and ylabel == 'Average Response Time (seconds) per application':
 			r = stats.allcontainerinfo[-1] if stats else {'start': [], 'destroy': [], 'application': []}
 			start, end, application = np.array(r['start']), np.array(r['destroy']), np.array(r['application'])
