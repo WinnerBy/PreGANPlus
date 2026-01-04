@@ -16,5 +16,7 @@ PROTO_FACTOR_DECAY = 0.995
 LATEST_WINDOW_SIZE = 10
 
 # GAN parameters
+# Back to original 0.8/0.2 for maximum energy efficiency
+# We will optimize model architecture to improve SLA instead of changing weights
 Coeff_Energy = 0.8
 Coeff_Latency = 0.2

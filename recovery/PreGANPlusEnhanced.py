@@ -1,0 +1,262 @@
+import sys
+sys.path.append('recovery/PreGANSrc/')
+
+import numpy as np
+import torch
+import torch.nn as nn
+from copy import deepcopy
+from .Recovery import *
+from .PreGANSrc.src.constants import *
+from .PreGANSrc.src.utils import *
+from .PreGANSrc.src.train import *
+from .PreGANSrc.src.train_multiobjective import train_gan_multiobjective
+
+class PreGANPlusEnhancedRecovery(Recovery):
+    def __init__(self, hosts, env, training=False):
+        super().__init__()
+        self.model_name = f'Transformer_{hosts}'
+        self.gen_name = f'Gen_{hosts}_MigrationAware'  # 使用迁移感知Generator
+        self.disc_name = f'Disc_{hosts}_MultiObjective'  # 使用多目标Discriminator
+        self.hosts = hosts
+        self.env_name = 'simulator' if env == '' else 'framework'
+        self.training = training
+        self.save_gan = True
+        
+        # Multi-objective training hyperparameters (restored to best configuration)
+        # Configuration from experiment_multiobjective_20260102_190728.log (best response time performance)
+        self.energy_weight = 0.3               # Weight for energy optimization
+        self.response_time_weight = 0.3       # Weight for response time constraint
+        self.migration_cost_weight = 0.4       # Weight for migration cost constraint
+        self.sla_threshold = 2800.0            # SLA threshold in seconds
+        self.migration_cost_threshold = 130    # Migration cost threshold
+        
+        # Migration control mechanisms (restored to best configuration)
+        self.migration_cooldown = {}          # {container_id: last_migration_epoch} - Track migration cooldown
+        self.cooldown_period = 3              # Cooldown period: 3 epochs
+        self.max_migrations_per_step = 3      # Maximum number of migrations allowed per scheduling step
+        
+        self.load_models()
+
+    def load_models(self):
+        # Load encoder model (same as PreGANPlus)
+        self.model, self.optimizer, self.epoch, self.accuracy_list = \
+            load_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # Train the model if not trained
+        if self.epoch == -1: 
+            self.train_model()
+        
+        # Load generator and discriminator (enhanced versions)
+        # Note: We need to modify load_gan to support new model names
+        self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
+            self.load_gan_enhanced(model_plus_folder, 
+                                  f'{self.env_name}_{self.gen_name}.ckpt', 
+                                  f'{self.env_name}_{self.disc_name}.ckpt', 
+                                  self.gen_name, self.disc_name)
+        
+        self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
+        # GAN is always tuned
+        self.ganloss = nn.BCELoss()
+        self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
+
+    def load_gan_enhanced(self, folder, gfname, dfname, gmodelname, dmodelname):
+        """Load enhanced GAN models"""
+        # Model class names are fixed: Gen_16_MigrationAware and Disc_16_MultiObjective
+        # (designed for 16 hosts, but file names can include host count)
+        base_gname = 'Gen_16_MigrationAware'
+        base_dname = 'Disc_16_MultiObjective'
+        
+        # Use load_gan function with base model class names
+        # File names (gfname, dfname) can include host count for different experiments
+        try:
+            gmodel, dmodel, gopt, dopt, epoch, accuracy_list = \
+                load_gan(folder, gfname, dfname, base_gname, base_dname)
+        except Exception as e:
+            # If models don't exist, create new ones
+            import recovery.PreGANSrc.src.models
+            try:
+                gmodel_class = getattr(recovery.PreGANSrc.src.models, base_gname)
+                dmodel_class = getattr(recovery.PreGANSrc.src.models, base_dname)
+            except AttributeError as attr_err:
+                # Fallback: if model classes don't exist, raise error
+                raise RuntimeError(f"Model classes {base_gname} or {base_dname} not found. "
+                                 f"Make sure they are defined in models.py. "
+                                 f"Original error: {attr_err}")
+            gmodel = gmodel_class().double()
+            dmodel = dmodel_class().double()
+            gopt = torch.optim.AdamW(gmodel.parameters(), lr=gmodel.lr, weight_decay=1e-5)
+            dopt = torch.optim.AdamW(dmodel.parameters(), lr=dmodel.lr, weight_decay=1e-5)
+            epoch = -1
+            accuracy_list = []
+        return gmodel, dmodel, gopt, dopt, epoch, accuracy_list
+
+    def train_model(self):
+        """Train encoder model (same as PreGANPlus)"""
+        self.model_plotter = Model_Plotter(self.env_name, self.model_name)
+        folder = os.path.join(data_folder, self.env_name)
+        train_time_data, train_schedule_data, anomaly_data, class_data = load_dataset(folder, self.model)
+        for self.epoch in tqdm(range(self.epoch+1, self.epoch+num_epochs+1), position=0):
+            loss, factor = backprop(self.epoch, self.model, train_time_data, train_schedule_data, 
+                                   anomaly_data, class_data, self.optimizer)
+            anomaly_score, class_score = accuracy(self.model, train_time_data, train_schedule_data, 
+                                                 anomaly_data, class_data, self.model_plotter)
+            tqdm.write(f'Epoch {self.epoch},\tFactor = {factor},\tAScore = {anomaly_score},\tCScore = {class_score}')
+            self.accuracy_list.append((loss, factor, anomaly_score, class_score))
+            self.model_plotter.plot(self.accuracy_list, self.epoch)
+            save_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', 
+                      self.model, self.optimizer, self.epoch, self.accuracy_list)
+
+    def tune_model(self):
+        """Tune encoder for a single epoch (same as PreGANPlus)"""
+        folder = os.path.join(data_folder, self.env_name)
+        train_time_data, train_schedule_data, anomaly_data, class_data = \
+            load_on_the_fly_dataset(self.model, folder, self.env.stats)
+        loss, factor = backprop(self.epoch, self.model, train_time_data, train_schedule_data, 
+                               anomaly_data, class_data, self.optimizer)
+        anomaly_score, class_score = accuracy(self.model, train_time_data, train_schedule_data, 
+                                             anomaly_data, class_data, None)
+        tqdm.write(f'Epoch {self.epoch},\tFactor = {factor},\tAScore = {anomaly_score},\tCScore = {class_score}')
+        self.accuracy_list.append((loss, factor, anomaly_score, class_score))
+
+    def train_gan(self, embedding, schedule_data):
+        """Multi-objective GAN training: balance energy, response time, and migration cost"""
+        # Use the multi-objective training function
+        (gen_loss, disc_loss, class_loss, energy_loss, response_time_loss, migration_cost_loss,
+         gen_energy_loss, gen_response_time_loss, gen_migration_cost_loss,
+         new_energy, orig_energy, new_response_time, orig_response_time,
+         actual_migration_count, predicted_migration_cost) = \
+            train_gan_multiobjective(
+                self.gen, self.disc, self.gopt, self.dopt,
+                embedding, schedule_data, self.env, self.ganloss,
+                self.energy_weight, self.response_time_weight, self.migration_cost_weight,
+                self.sla_threshold, self.migration_cost_threshold
+            )
+        
+        # Append to accuracy list and save model
+        if self.save_gan:
+            self.epoch += 1
+            self.accuracy_list.append((
+                gen_loss, disc_loss, class_loss, energy_loss, response_time_loss, migration_cost_loss,
+                gen_energy_loss, gen_response_time_loss, gen_migration_cost_loss,
+                new_energy, orig_energy, new_response_time, orig_response_time,
+                actual_migration_count, predicted_migration_cost
+            ))
+            print(f'{color.HEADER}Epoch {self.epoch},\t'
+                  f'GLoss = {gen_loss:.4f},\tDLoss = {disc_loss:.4f},\t'
+                  f'ClassLoss = {class_loss:.4f},\tEnergyLoss = {energy_loss:.4f},\t'
+                  f'RTLoss = {response_time_loss:.4f},\tMCLoss = {migration_cost_loss:.4f},\t'
+                  f'NewEnergy = {new_energy:.2f},\tOrigEnergy = {orig_energy:.2f},\t'
+                  f'NewRT = {new_response_time:.2f}s,\tOrigRT = {orig_response_time:.2f}s,\t'
+                  f'ActualMC = {actual_migration_count},\tPredMC = {predicted_migration_cost:.2f}{color.ENDC}')
+            # Use energy as score for plotting (can be adjusted)
+            new_score = 0.8 * new_energy + 0.2 * new_response_time
+            orig_score = 0.8 * orig_energy + 0.2 * orig_response_time
+            self.gan_plotter.plot(self.accuracy_list, self.epoch, new_score, orig_score)
+            save_gan(model_plus_folder, 
+                    f'{self.env_name}_{self.gen_name}.ckpt', 
+                    f'{self.env_name}_{self.disc_name}.ckpt',
+                    self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list)
+
+    def recover_decision(self, embedding, schedule_data, original_decision):
+        """Recover decision using enhanced GAN with Phase 1 migration control optimizations"""
+        # Generator now returns (new_schedule, predicted_migration_cost)
+        new_schedule_data, predicted_migration_cost = self.gen(embedding, schedule_data)
+        
+        # Use multi-objective discriminator: get classification probabilities
+        # Note: Discriminator now returns 4 values (class_probs, energy_pred, response_time_pred, migration_cost_pred)
+        class_probs, energy_pred, response_time_pred, migration_cost_pred = self.disc(schedule_data, new_schedule_data)
+        self.gan_plotter.new_better(class_probs[1] >= class_probs[0])
+        
+        if class_probs[0] > class_probs[1]:  # original better
+            return original_decision
+        
+        # Form new decision
+        host_alloc = []
+        container_alloc = [-1] * len(self.env.hostlist)
+        for i in range(len(self.env.hostlist)):
+            host_alloc.append([])
+        for c in self.env.containerlist:
+            if c and c.getHostID() != -1:
+                host_alloc[c.getHostID()].append(c.id)
+                container_alloc[c.id] = c.getHostID()
+        
+        # Phase 1 Optimization: Collect potential migrations with priorities
+        potential_migrations = []  # List of (cid, new_host, priority)
+        decision_dict = dict(original_decision)
+        current_epoch = self.epoch
+        
+        for cid in np.concatenate(host_alloc):
+            cid = int(cid)
+            one_hot = new_schedule_data[cid].tolist()
+            new_host = one_hot.index(max(one_hot))
+            orig_host = container_alloc[cid]
+            
+            if orig_host != new_host:  # Migration needed
+                # Calculate migration priority (based on schedule change magnitude)
+                priority = abs(new_schedule_data[cid][new_host] - schedule_data[cid][orig_host])
+                
+                # Phase 1 Optimization 1: Check migration cooldown
+                if cid in self.migration_cooldown:
+                    last_migration_epoch = self.migration_cooldown[cid]
+                    if current_epoch - last_migration_epoch < self.cooldown_period:
+                        # Still in cooldown period, skip this migration
+                        continue
+                
+                potential_migrations.append((cid, new_host, priority))
+        
+        # Phase 1 Optimization 2: Limit number of migrations per step
+        # Sort by priority (highest first) and keep only top N
+        potential_migrations.sort(key=lambda x: x[2], reverse=True)
+        allowed_migrations = potential_migrations[:self.max_migrations_per_step]
+        
+        # Apply allowed migrations
+        hosts_from = [0] * self.hosts
+        for cid, new_host, priority in allowed_migrations:
+            orig_host = container_alloc[cid]
+            decision_dict[cid] = new_host
+            hosts_from[orig_host] = 1
+            # Update cooldown tracking
+            self.migration_cooldown[cid] = current_epoch
+        
+        self.gan_plotter.plot_test(hosts_from)
+        return list(decision_dict.items())
+
+    def run_encoder(self, schedule_data):
+        """Run encoder (same as PreGANPlus)"""
+        # Get latest data from Stat
+        time_data = self.env.stats.time_series
+        time_data = normalize_test_time_data(time_data, self.train_time_data)
+        if time_data.shape[0] >= self.model.n_window:
+            time_data = time_data[-self.model.n_window:]
+        time_data = convert_to_windows(time_data, self.model)[-1]
+        return self.model(time_data, schedule_data)
+
+    def run_model(self, time_series, original_decision):
+        """Main model execution (same as PreGANPlus)"""
+        # Run encoder
+        schedule_data = torch.tensor(self.env.scheduler.result_cache).double()
+        anomaly, prototype = self.run_encoder(schedule_data)
+        
+        # If no anomaly predicted, return original decision
+        for a in anomaly:
+            prediction = torch.argmax(a).item()
+            if prediction == 1:
+                self.gan_plotter.update_anomaly_detected(1)
+                break
+        else:
+            self.gan_plotter.update_anomaly_detected(0)
+            return original_decision
+        
+        # Form prototype vectors for diagnosed hosts
+        embedding = [torch.zeros_like(p) if torch.argmax(anomaly[i]).item() == 0 else p 
+                    for i, p in enumerate(prototype)]
+        self.gan_plotter.update_class_detected(get_classes(embedding, self.model))
+        embedding = torch.stack(embedding)
+        
+        # Pass through enhanced GAN
+        self.train_gan(embedding, schedule_data)
+        
+        # Tune Model
+        self.tune_model()
+        
+        return self.recover_decision(embedding, schedule_data, original_decision)
+

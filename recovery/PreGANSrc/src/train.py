@@ -108,3 +108,112 @@ def accuracy(model, train_time_data, train_schedule_data, anomaly_data, class_da
 	tqdm.write(f'P = {p}, R = {r}, F1 = {2 * p * r / (p + r)}')
 	return anomaly_correct / len(train_time_data), class_correct / class_total
 
+# Multi-task GAN Training Function
+def train_gan_multitask(gen, disc, gopt, dopt, embedding, schedule_data, env, ganloss, 
+                        score_regression_weight=0.5, score_generator_weight=0.3,
+                        response_time_weight=0.2, sla_threshold=3000.0):
+    """
+    Multi-task GAN training function with response time constraint
+    
+    Args:
+        gen: Generator model
+        disc: Multi-task Discriminator model
+        gopt: Generator optimizer
+        dopt: Discriminator optimizer
+        embedding: [16, 2] embedding from encoder
+        schedule_data: [16, 16] current schedule
+        env: Environment object (for run_simulation)
+        ganloss: Loss function for classification (BCELoss)
+        score_regression_weight: Weight for regression loss in discriminator training
+        score_generator_weight: Weight for regression loss in generator training
+        response_time_weight: Weight for response time constraint in generator training (新增)
+        sla_threshold: SLA threshold for response time in seconds (新增)
+    
+    Returns:
+        gen_loss: Generator loss
+        disc_loss: Discriminator loss
+        class_loss: Classification loss
+        score_loss: Regression loss
+        response_time_loss: Response time constraint loss (新增)
+        new_score: Evaluation score of new schedule
+        orig_score: Evaluation score of original schedule
+        new_response_time: Response time of new schedule (新增)
+        orig_response_time: Response time of original schedule (新增)
+    """
+    import torch
+    from .utils import run_simulation
+    
+    # ========== Generate new schedule ==========
+    new_schedule_data = gen(embedding, schedule_data)
+    
+    # ========== Real evaluation ==========
+    new_score = run_simulation(env.stats, new_schedule_data)
+    orig_score = run_simulation(env.stats, schedule_data)
+    
+    # ========== Get response times ==========
+    # runSimulation returns (energy, latency) where latency is response time
+    _, new_response_time = env.stats.runSimulation(new_schedule_data)
+    _, orig_response_time = env.stats.runSimulation(schedule_data)
+    
+    # ========== Train Discriminator ==========
+    disc.zero_grad()
+    
+    # Discriminator prediction (now returns 3 values)
+    class_probs, score_pred, response_time_pred = disc(schedule_data, new_schedule_data.detach())
+    
+    # Task 1: Classification loss (judge which is better)
+    true_class = torch.tensor([0, 1] if new_score <= orig_score else [1, 0], 
+                              dtype=torch.double, device=class_probs.device)
+    class_loss = ganloss(class_probs, true_class)
+    
+    # Task 2: Regression loss (predict evaluation score)
+    score_target = torch.tensor([new_score], dtype=torch.double, device=score_pred.device)
+    score_loss = mse_loss(score_pred, score_target)
+    
+    # Task 3: Response time prediction loss (新增)
+    response_time_target = torch.tensor([new_response_time], dtype=torch.double, device=response_time_pred.device)
+    response_time_pred_loss = mse_loss(response_time_pred, response_time_target)
+    
+    # Multi-task loss (weighted combination)
+    disc_loss = class_loss + score_regression_weight * score_loss + 0.1 * response_time_pred_loss
+    
+    disc_loss.backward()
+    dopt.step()
+    
+    # ========== Train Generator ==========
+    gen.zero_grad()
+    
+    # Discriminator prediction (not detached)
+    class_probs_gen, score_pred_gen, response_time_pred_gen = disc(schedule_data, new_schedule_data)
+    
+    # Generator loss: encourage discriminator to think new schedule is better
+    # Method 1: Classification loss
+    target_better = torch.tensor([0, 1], dtype=torch.double, device=class_probs_gen.device)
+    gen_class_loss = ganloss(class_probs_gen, target_better)
+    
+    # Method 2: Regression loss (encourage predicting lower score)
+    score_upper_bound = torch.tensor([orig_score], dtype=torch.double, device=score_pred_gen.device)
+    gen_score_loss = torch.relu(score_pred_gen - score_upper_bound + 0.1)
+    
+    # Method 3: Response time constraint loss (新增，关键优化)
+    # Penalize if predicted response time exceeds SLA threshold
+    sla_threshold_tensor = torch.tensor([sla_threshold], dtype=torch.double, device=response_time_pred_gen.device)
+    response_time_excess = torch.relu(response_time_pred_gen - sla_threshold_tensor)
+    gen_response_time_loss = response_time_weight * response_time_excess
+    
+    # Also penalize if actual response time is high (additional constraint)
+    actual_response_time_tensor = torch.tensor([new_response_time], dtype=torch.double, device=response_time_pred_gen.device)
+    actual_response_time_excess = torch.relu(actual_response_time_tensor - sla_threshold_tensor)
+    gen_actual_response_time_loss = response_time_weight * 0.5 * actual_response_time_excess
+    
+    # Generator total loss
+    gen_loss = gen_class_loss + score_generator_weight * gen_score_loss + gen_response_time_loss + gen_actual_response_time_loss
+    
+    gen_loss.backward()
+    gopt.step()
+    
+    response_time_loss = gen_response_time_loss.item() + gen_actual_response_time_loss.item()
+    
+    return (gen_loss.item(), disc_loss.item(), class_loss.item(), score_loss.item(),
+            response_time_loss, new_score, orig_score, new_response_time, orig_response_time)
+

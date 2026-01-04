@@ -3,11 +3,16 @@ from matplotlib.colors import LinearSegmentedColormap
 import statistics
 import os, glob
 import numpy as np
+import re
 from sklearn.manifold import TSNE
 import seaborn as sns
 from .constants import *
 
-plt.style.use(['science', 'ieee'])
+try:
+    plt.style.use(['science', 'ieee'])
+except OSError:
+    # If science style is not available, use default style
+    plt.style.use('default')
 plt.rcParams["text.usetex"] = False
 plt.rcParams['figure.figsize'] = 6, 2
 
@@ -118,7 +123,9 @@ class GAN_Plotter():
 	def __init__(self, env, gname, dname, training = True):
 		self.env = env
 		self.gname, self.dname = gname, dname
-		self.n_hosts = int(gname.split('_')[-1])
+		# Extract number from name (handles both Gen_16 and Gen_16_Attention formats)
+		numbers = re.findall(r'\d+', gname)
+		self.n_hosts = int(numbers[-1]) if numbers else 16  # Default to 16 if no number found
 		self.folder = os.path.join(plot_folder, env, 'gan' if training else 'test')
 		self.prefix = self.folder + '/' + self.gname + '_' + self.dname
 		self.epoch = 0

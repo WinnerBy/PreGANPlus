@@ -414,3 +414,333 @@ class Transformer_16(nn.Module):
         prototypes = [prototype_flat[0, i] for i in range(self.n_hosts)]  # 取第0个batch
         
         return anomaly_scores, prototypes
+
+
+############## Enhanced Models for PreGANPlus Enhanced ##############
+
+# Attention-Enhanced Generator Network
+class Gen_16_Attention(nn.Module):
+    def __init__(self):
+        super(Gen_16_Attention, self).__init__()
+        self.name = 'Gen_16_Attention'
+        self.lr = 0.00005
+        self.n_hosts = 16
+        self.n_hidden = 64
+        self.proto_dim = PROTO_DIM  # 2
+        
+        # 1. Embedding投影层
+        self.embedding_proj = nn.Linear(self.proto_dim, self.n_hidden)
+        
+        # 2. Schedule投影层（将16×16矩阵视为序列，每行是一个token）
+        self.schedule_proj = nn.Linear(self.n_hosts, self.n_hidden)
+        
+        # 3. 交叉注意力：embedding作为key/value，schedule作为query
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.n_hidden,
+            num_heads=4,
+            batch_first=False,
+            dropout=0.1
+        )
+        
+        # 4. 自注意力：在schedule序列内部建模依赖
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=self.n_hidden,
+            num_heads=4,
+            batch_first=False,
+            dropout=0.1
+        )
+        
+        # 5. 输出层：为每个容器生成到所有主机的分配增量
+        self.output = nn.Sequential(
+            nn.Linear(self.n_hidden, self.n_hidden),
+            nn.LeakyReLU(True),
+            nn.Linear(self.n_hidden, self.n_hosts),
+            nn.Tanh()
+        )
+    
+    def forward(self, e, s):
+        """
+        Args:
+            e: [16, 2] embedding from encoder
+            s: [16, 16] current schedule matrix
+        Returns:
+            new_schedule: [16, 16] new schedule matrix
+        """
+        # 投影到相同维度
+        e_proj = self.embedding_proj(e)  # [16, 64]
+        s_proj = self.schedule_proj(s)   # [16, 64]
+        
+        # 交叉注意力：embedding指导schedule更新
+        # query: schedule, key/value: embedding
+        s_attended, _ = self.cross_attn(
+            query=s_proj.unsqueeze(0),      # [1, 16, 64]
+            key=e_proj.unsqueeze(0),        # [1, 16, 64]
+            value=e_proj.unsqueeze(0)       # [1, 16, 64]
+        )
+        s_attended = s_attended.squeeze(0)   # [16, 64]
+        
+        # 自注意力：在schedule内部建模依赖
+        s_self, _ = self.self_attn(
+            query=s_attended.unsqueeze(0),
+            key=s_attended.unsqueeze(0),
+            value=s_attended.unsqueeze(0)
+        )
+        s_self = s_self.squeeze(0)           # [16, 64]
+        
+        # 残差连接
+        s_fused = s_attended + s_self       # [16, 64]
+        
+        # 生成增量：为每个容器生成到所有主机的分配增量
+        del_s = 4 * self.output(s_fused)    # [16, 16]
+        
+        return s + del_s
+
+
+# Migration-Aware Generator Network (新设计)
+class Gen_16_MigrationAware(nn.Module):
+    def __init__(self):
+        super(Gen_16_MigrationAware, self).__init__()
+        self.name = 'Gen_16_MigrationAware'
+        self.lr = 0.00005
+        self.n_hosts = 16
+        self.n_hidden = 64
+        self.proto_dim = PROTO_DIM  # 2
+        
+        # 1. Embedding投影层
+        self.embedding_proj = nn.Linear(self.proto_dim, self.n_hidden)
+        
+        # 2. Schedule投影层
+        self.schedule_proj = nn.Linear(self.n_hosts, self.n_hidden)
+        
+        # 3. 交叉注意力：embedding作为key/value，schedule作为query
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.n_hidden,
+            num_heads=4,
+            batch_first=False,
+            dropout=0.1
+        )
+        
+        # 4. 自注意力：在schedule序列内部建模依赖
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=self.n_hidden,
+            num_heads=4,
+            batch_first=False,
+            dropout=0.1
+        )
+        
+        # 5. 迁移成本预测模块（新增）
+        self.migration_cost_predictor = nn.Sequential(
+            nn.Linear(self.n_hidden, 32),
+            nn.LeakyReLU(0.2),
+            nn.Linear(32, 1),
+            nn.ReLU()  # 迁移次数非负
+        )
+        
+        # 6. 迁移约束层（新增）：为每个容器预测迁移概率
+        self.migration_gate = nn.Sequential(
+            nn.Linear(self.n_hidden, 32),
+            nn.LeakyReLU(0.2),
+            nn.Linear(32, 1),
+            nn.Sigmoid()  # 输出0-1之间的概率
+        )
+        
+        # 7. 输出层：为每个容器生成到所有主机的分配增量
+        self.output = nn.Sequential(
+            nn.Linear(self.n_hidden, self.n_hidden),
+            nn.LeakyReLU(True),
+            nn.Linear(self.n_hidden, self.n_hosts),
+            nn.Tanh()
+        )
+    
+    def forward(self, e, s):
+        """
+        Args:
+            e: [16, 2] embedding from encoder
+            s: [16, 16] current schedule matrix
+        Returns:
+            new_schedule: [16, 16] new schedule matrix
+            predicted_migration_cost: [1] predicted migration count
+        """
+        # 投影到相同维度
+        e_proj = self.embedding_proj(e)  # [16, 64]
+        s_proj = self.schedule_proj(s)   # [16, 64]
+        
+        # 交叉注意力：embedding指导schedule更新
+        s_attended, _ = self.cross_attn(
+            query=s_proj.unsqueeze(0),      # [1, 16, 64]
+            key=e_proj.unsqueeze(0),        # [1, 16, 64]
+            value=e_proj.unsqueeze(0)       # [1, 16, 64]
+        )
+        s_attended = s_attended.squeeze(0)   # [16, 64]
+        
+        # 自注意力：在schedule内部建模依赖
+        s_self, _ = self.self_attn(
+            query=s_attended.unsqueeze(0),
+            key=s_attended.unsqueeze(0),
+            value=s_attended.unsqueeze(0)
+        )
+        s_self = s_self.squeeze(0)           # [16, 64]
+        
+        # 残差连接
+        s_fused = s_attended + s_self       # [16, 64]
+        
+        # 预测迁移成本（新增）：基于融合特征的平均值
+        predicted_migration_cost = self.migration_cost_predictor(s_fused.mean(dim=0, keepdim=True))  # [1, 1]
+        predicted_migration_cost = predicted_migration_cost.squeeze()  # [1]
+        # 确保预测值在合理范围内（0-300），防止预测值过大导致训练不稳定
+        predicted_migration_cost = torch.clamp(predicted_migration_cost, 0.0, 300.0)
+        
+        # 迁移门控（新增）：为每个容器预测迁移概率
+        migration_gates = self.migration_gate(s_fused)  # [16, 1]
+        migration_gates = migration_gates.squeeze(-1)   # [16]
+        
+        # 生成增量：考虑迁移约束（增强版）
+        # 如果迁移概率高，大幅减小增量幅度，从而减少迁移
+        del_s_raw = self.output(s_fused)  # [16, 16]
+        # 进一步增强迁移约束：迁移概率高时，更大幅度减小增量（从0.8增加到0.9）
+        migration_penalty = 1.0 - 0.9 * migration_gates.unsqueeze(-1)  # [16, 1]，迁移概率高时更大幅度减小增量
+        # 同时考虑预测的迁移成本：如果预测迁移成本高，进一步减小增量
+        # 迁移成本惩罚阈值从200.0降低到150.0，下限从0.3降低到0.2（更严格）
+        migration_cost_penalty = torch.clamp(1.0 - predicted_migration_cost / 150.0, 0.2, 1.0)  # 标量
+        migration_cost_penalty = migration_cost_penalty.unsqueeze(0).unsqueeze(0)  # [1, 1]，与[16, 16]广播兼容
+        del_s = 4 * del_s_raw * migration_penalty * migration_cost_penalty  # [16, 16]
+        
+        new_schedule = s + del_s
+        
+        return new_schedule, predicted_migration_cost
+
+
+# Multi-Task Discriminator Network
+class Disc_16_MultiTask(nn.Module):
+    def __init__(self):
+        super(Disc_16_MultiTask, self).__init__()
+        self.name = 'Disc_16_MultiTask'
+        self.lr = 0.00005
+        self.n_hosts = 16
+        self.n_hidden = 128  # 增加隐藏层维度
+        
+        # 共享特征提取层
+        self.shared = nn.Sequential(
+            nn.Linear(self.n_hosts * self.n_hosts * 2, self.n_hidden * 2),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.1),
+            nn.Linear(self.n_hidden * 2, self.n_hidden),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.1),
+        )
+        
+        # 任务1: 分类头（判断更好/更差）
+        self.classifier = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 2),
+            nn.Softmax(dim=0)
+        )
+        
+        # 任务2: 回归头（预测评估分数）
+        self.regressor = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 1)  # 输出评估分数
+        )
+        
+        # 任务3: 响应时间预测头（用于SLA优化）
+        self.response_time_predictor = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 1)  # 输出预测响应时间
+        )
+    
+    def forward(self, o, n):
+        """
+        Args:
+            o: [16, 16] original schedule
+            n: [16, 16] new schedule
+        Returns:
+            class_probs: [2] classification probabilities [orig_better, new_better]
+            score_pred: [1] predicted evaluation score
+            response_time_pred: [1] predicted response time
+        """
+        # 特征提取
+        x = torch.cat([o.view(-1), n.view(-1)])  # [512]
+        features = self.shared(x)  # [128]
+        
+        # 多任务输出
+        class_probs = self.classifier(features)  # [2]
+        score_pred = self.regressor(features)    # [1]
+        response_time_pred = self.response_time_predictor(features)  # [1]
+        
+        return class_probs, score_pred, response_time_pred
+
+
+# Multi-Objective Discriminator Network (新设计)
+class Disc_16_MultiObjective(nn.Module):
+    def __init__(self):
+        super(Disc_16_MultiObjective, self).__init__()
+        self.name = 'Disc_16_MultiObjective'
+        self.lr = 0.00005
+        self.n_hosts = 16
+        self.n_hidden = 128
+        
+        # 共享特征提取层
+        self.shared = nn.Sequential(
+            nn.Linear(self.n_hosts * self.n_hosts * 2, self.n_hidden * 2),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.1),
+            nn.Linear(self.n_hidden * 2, self.n_hidden),
+            nn.LeakyReLU(0.2),
+            nn.Dropout(0.1),
+        )
+        
+        # 任务1: 分类头（判断更好/更差）
+        self.classifier = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 2),
+            nn.Softmax(dim=0)
+        )
+        
+        # 任务2: 能量预测头（新增）
+        self.energy_predictor = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 1)
+        )
+        
+        # 任务3: 响应时间预测头
+        self.response_time_predictor = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 1)
+        )
+        
+        # 任务4: 迁移成本预测头（新增）
+        self.migration_cost_predictor = nn.Sequential(
+            nn.Linear(self.n_hidden, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 1),
+            nn.ReLU()  # 迁移次数非负
+        )
+    
+    def forward(self, o, n):
+        """
+        Args:
+            o: [16, 16] original schedule
+            n: [16, 16] new schedule
+        Returns:
+            class_probs: [2] classification probabilities
+            energy_pred: [1] predicted energy consumption
+            response_time_pred: [1] predicted response time
+            migration_cost_pred: [1] predicted migration count
+        """
+        # 特征提取
+        x = torch.cat([o.view(-1), n.view(-1)])  # [512]
+        features = self.shared(x)  # [128]
+        
+        # 多目标输出
+        class_probs = self.classifier(features)  # [2]
+        energy_pred = self.energy_predictor(features)  # [1]
+        response_time_pred = self.response_time_predictor(features)  # [1]
+        migration_cost_pred = self.migration_cost_predictor(features)  # [1]
+        
+        return class_probs, energy_pred, response_time_pred, migration_cost_pred

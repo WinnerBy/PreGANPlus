@@ -26,6 +26,7 @@ LOGS_DIR = ROOT / 'logs'
 
 RECOVERY_MAP = {
     'PreGANPlus': 'PreGANPlusRecovery',
+    'PreGANPlusEnhanced': 'PreGANPlusEnhancedRecovery',
     'PreGAN': 'PreGANRecovery',
     'PCFT': 'PCFTRecovery',
     'DFTM': 'DFTMRecovery',

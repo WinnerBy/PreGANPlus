@@ -66,7 +66,7 @@ SAVE_PATH = 'results/' + env + '/'
 import os
 os.makedirs(SAVE_PATH, exist_ok=True)
 
-Models = ['PreGAN', 'CMODLB', 'PCFT', 'ECLB', 'DFTM', 'GOBI'] 
+Models = ['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced', 'CMODLB', 'PCFT', 'ECLB', 'DFTM', 'GOBI'] 
 xLabel = 'Execution Time (minutes)'
 Colors = ['red', 'blue', 'green', 'orange', 'magenta', 'pink', 'cyan', 'maroon', 'grey', 'purple', 'navy']
 apps = ['yolo', 'pocketsphinx', 'aeneas']
