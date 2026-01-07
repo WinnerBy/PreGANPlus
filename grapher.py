@@ -27,7 +27,7 @@ plt.rcParams["text.usetex"] = True
 size = (2.9, 2.5)
 env = argv[1]
 option = 0
-sla_baseline = 'GOBI'
+sla_baseline = 'PreGAN'  # 使用PreGAN作为SLA baseline（GOBI是scheduler，不是recovery方法）
 rot = 25
 
 def fairness(l):
@@ -66,7 +66,7 @@ SAVE_PATH = 'results/' + env + '/'
 import os
 os.makedirs(SAVE_PATH, exist_ok=True)
 
-Models = ['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced', 'CMODLB', 'PCFT', 'ECLB', 'DFTM', 'GOBI'] 
+Models = ['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced', 'CMODLB', 'PCFT', 'ECLB', 'DFTM'] 
 xLabel = 'Execution Time (minutes)'
 Colors = ['red', 'blue', 'green', 'orange', 'magenta', 'pink', 'cyan', 'maroon', 'grey', 'purple', 'navy']
 apps = ['yolo', 'pocketsphinx', 'aeneas']
@@ -94,14 +94,33 @@ load_models = Models if sla_baseline in Models else Models+[sla_baseline]
 for model in load_models:
 	try:
 		model2 = model.replace('*', '2').replace('GOSH', 'HSOGOBI').replace('SGOBI', 'SOGOBI')
+		# 改进文件选择逻辑：优先选择100_16的文件，如果有多个则选择最大的
+		pk_files = []
 		for file in os.listdir(PATH+model2):
 			if fnmatch.fnmatch(file, '*.pk'):
-				print(file)
-				with open(PATH + model2 + '/' + file, 'rb') as handle:
-				    stats = pickle.load(handle)
-				all_stats_list.append(stats)
-				break
-	except:
+				file_path = os.path.join(PATH+model2, file)
+				file_size = os.path.getsize(file_path)
+				pk_files.append((file, file_size))
+		
+		if not pk_files:
+			all_stats_list.append(None)
+			continue
+		
+		# 优先选择包含100_16的文件（完整实验数据）
+		preferred_files = [f for f in pk_files if '100_16' in f[0]]
+		if preferred_files:
+			# 如果有多个100_16文件，选择最大的
+			selected_file = max(preferred_files, key=lambda x: x[1])[0]
+		else:
+			# 如果没有100_16文件，选择最大的文件
+			selected_file = max(pk_files, key=lambda x: x[1])[0]
+		
+		print(f"{model2}: {selected_file}")
+		with open(PATH + model2 + '/' + selected_file, 'rb') as handle:
+		    stats = pickle.load(handle)
+		all_stats_list.append(stats)
+	except Exception as e:
+		print(f"Error loading {model2}: {e}")
 		all_stats_list.append(None)
 
 all_stats = dict(zip(load_models, all_stats_list))
@@ -165,7 +184,8 @@ for ylabel in yLabelsStatic:
 			Data[ylabel][model], CI[ylabel][model] = np.sum(d), 0
 		if ylabel == 'Cost per container (US Dollars)':
 			d = np.array([i['numdestroyed'] for i in stats.metrics]) if stats else np.array([0])
-			Data[ylabel][model], CI[ylabel][model] = cost / float(np.sum(d)) if len(d) != 1 else 0, 0
+			total_destroyed = float(np.sum(d))
+			Data[ylabel][model], CI[ylabel][model] = cost / total_destroyed if total_destroyed > 0 else 0, 0
 		if 'f' in env and ylabel == 'Number of completed tasks per application':
 			r = stats.allcontainerinfo[-1]['application'] if stats else []
 			application = np.array(r)

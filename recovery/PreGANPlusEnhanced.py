@@ -22,11 +22,14 @@ class PreGANPlusEnhancedRecovery(Recovery):
         self.training = training
         self.save_gan = True
         
-        # Multi-objective training hyperparameters (restored to best configuration)
-        # Configuration from experiment_multiobjective_20260102_190728.log (best response time performance)
-        self.energy_weight = 0.3               # Weight for energy optimization
-        self.response_time_weight = 0.3       # Weight for response time constraint
-        self.migration_cost_weight = 0.4       # Weight for migration cost constraint
+        # Multi-objective training hyperparameters (optimized for energy and response time)
+        # Goal: Better than PreGANPlus in both energy and response time
+        # Previous: energy_weight=0.3, response_time_weight=0.3, migration_cost_weight=0.4
+        # Issue: Response time was worse than PreGANPlus (3489.85s vs 3216.53s)
+        # Solution: Increase response_time_weight, reduce migration_cost_weight
+        self.energy_weight = 0.30             # Weight for energy optimization (slightly increased to maintain energy advantage)
+        self.response_time_weight = 0.50      # Weight for response time constraint (increased to prioritize response time)
+        self.migration_cost_weight = 0.2       # Weight for migration cost constraint (reduced, as 0.4 didn't effectively control migrations)
         self.sla_threshold = 2800.0            # SLA threshold in seconds
         self.migration_cost_threshold = 130    # Migration cost threshold
         

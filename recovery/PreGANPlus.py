@@ -110,21 +110,34 @@ class PreGANPlusRecovery(Recovery):
         time_data = normalize_test_time_data(time_data, self.train_time_data)
         if time_data.shape[0] >= self.model.n_window: time_data = time_data[-self.model.n_window:]
         time_data = convert_to_windows(time_data, self.model)[-1]
-        return self.model(time_data, schedule_data)
+        anomaly, prototype = self.model(time_data, schedule_data)
+        
+        # DEBUG: Log encoder output
+        import numpy as np
+        import torch
+        anomaly_sum = sum([torch.argmax(a).item() for a in anomaly])
+        prototype_sum = sum([p.detach().cpu().numpy().sum() for p in prototype])
+        print(f'[DEBUG PreGANPlus] Model: {self.model_name}, Anomaly sum: {anomaly_sum}, Prototype sum: {prototype_sum:.6f}')
+        
+        return anomaly, prototype
 
     def run_model(self, time_series, original_decision):
         # Run encoder
         schedule_data = torch.tensor(self.env.scheduler.result_cache).double()
         anomaly, prototype = self.run_encoder(schedule_data)
         # If no anomaly predicted, return original decision 
+        anomaly_detected = False
         for a in anomaly:
             prediction = torch.argmax(a).item() 
             if prediction == 1: 
+                anomaly_detected = True
                 self.gan_plotter.update_anomaly_detected(1)
                 break
-        else:
+        if not anomaly_detected:
+            print(f'[DEBUG PreGANPlus] No anomaly detected, returning original_decision')
             self.gan_plotter.update_anomaly_detected(0)
             return original_decision
+        print(f'[DEBUG PreGANPlus] Anomaly detected, proceeding with GAN')
         # Form prototype vectors for diagnosed hosts
         embedding = [torch.zeros_like(p) if torch.argmax(anomaly[i]).item() == 0 else p for i, p in enumerate(prototype)]
         self.gan_plotter.update_class_detected(get_classes(embedding, self.model))

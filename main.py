@@ -82,7 +82,7 @@ CONTAINERS = HOSTS
 TOTAL_POWER = 1000
 ROUTER_BW = 10000
 INTERVAL_TIME = 300 # seconds
-NEW_CONTAINERS = 1
+NEW_CONTAINERS = 5
 DB_NAME = ''
 DB_HOST = ''
 DB_PORT = 0
@@ -117,7 +117,7 @@ def initalizeEnvironment(environment, logger):
 
 	# Initialize recovery
 	''' Can be PreGANPlusRecovery, PreGANPlusEnhancedRecovery, PreGANRecovery, PCFTRecovery, DFTMRecovery, ECLBRecovery, CMODLBRecovery '''
-	recovery = PreGANRecovery(HOSTS, environment, training = True)
+	recovery = Recovery()
 
 	# Initialize Stats
 	stats = Stats(workload, datacenter, scheduler)
