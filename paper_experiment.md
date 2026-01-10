@@ -25,7 +25,7 @@
 
 ```python
 # Global constants
-NUM_SIM_STEPS = 500        # 实际使用500个间隔（可根据需要调整，论文使用1000个间隔 [19]）
+NUM_SIM_STEPS = 1000        # 可根据需要调整，论文使用1000个间隔 [19]
 HOSTS = 16                  # 16个节点 [17]
 CONTAINERS = 16
 TOTAL_POWER = 1000
@@ -123,7 +123,7 @@ recovery = PreGANRecovery(HOSTS, environment, training=True)
 
 ```python
 # Global constants
-NUM_SIM_STEPS = 300        # 实际使用300个间隔（可根据需要调整，论文使用1200个间隔 [19]）
+NUM_SIM_STEPS = 1200        # 可根据需要调整，论文使用1200个间隔 [19]
 HOSTS = 16
 CONTAINERS = 16
 TOTAL_POWER = 1000

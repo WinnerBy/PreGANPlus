@@ -117,7 +117,7 @@ def initalizeEnvironment(environment, logger):
 
 	# Initialize recovery
 	''' Can be PreGANPlusRecovery, PreGANPlusEnhancedRecovery, PreGANRecovery, PCFTRecovery, DFTMRecovery, ECLBRecovery, CMODLBRecovery '''
-	recovery = Recovery()
+	recovery = CMODLBRecovery(HOSTS, environment, training = False)
 
 	# Initialize Stats
 	stats = Stats(workload, datacenter, scheduler)

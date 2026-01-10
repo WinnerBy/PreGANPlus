@@ -37,10 +37,11 @@ def modify_main_py_for_gan_training(method='PreGAN'):
     # 读取main.py
     content = MAIN_PY.read_text()
     
-    # 修改NUM_SIM_STEPS = 300（可根据需要调整，如果效果不好可以继续训练）
+    # 设置训练步数：论文设置为1200步
+    steps = 1200
     content = re.sub(
         r'^(\s*)NUM_SIM_STEPS\s*=\s*\d+',
-        r'\1NUM_SIM_STEPS = 300',
+        lambda m: f"{m.group(1)}NUM_SIM_STEPS = {steps}",
         content,
         flags=re.MULTILINE
     )
@@ -66,17 +67,14 @@ def modify_main_py_for_gan_training(method='PreGAN'):
     MAIN_PY.write_text(content)
     
     print(f"✅ 已修改main.py配置：")
-    print(f"   - NUM_SIM_STEPS = 300（可根据需要调整）")
+    print(f"   - NUM_SIM_STEPS = {steps}（可根据需要调整）")
     print(f"   - NEW_CONTAINERS = 5")
     print(f"   - recovery = {recovery_line}")
     print("")
     print("📝 注意：")
     print("   - 编码器已在阶段2训练完成，此阶段只加载已训练的编码器")
-    print("   - GAN会在在线运行过程中训练（300步）")
+    print("   - GAN会在在线运行过程中训练（1200步）")
     print("   - 如果效果不好，可以多训练几次（再次运行此阶段）")
-    print("   - 训练过程中GAN checkpoint会定期保存（每次train_gan调用）")
-    print("   - 如果程序被终止，可以从已有checkpoint继续训练")
-    print("   - 中间保存频率：每50步保存一次stats（减少内存压力）")
     print("   - PreGANPlus支持在线微调Transformer编码器（如果启用）")
     print("")
 

@@ -19,3 +19,9 @@ SciencePlots
 seaborn
 tqdm
 scikit-learn==0.22.1
+
+# Deep Learning stack (pinned for compatibility)
+torch==1.10.2
+torchvision==0.11.3
+# For CPU-only environments, keep dgl; for CUDA builds, install the matching dgl-cuXXX package
+dgl==0.9.1

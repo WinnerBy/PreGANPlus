@@ -5,8 +5,8 @@
 set -e
 
 # 激活conda环境
-source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null
-conda activate pregan
+# source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null
+# conda activate pregan
 
 # 进入项目根目录
 cd "$(dirname "$0")/.."
@@ -23,13 +23,35 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # 阶段1：数据收集
 echo "=========================================="
-echo "阶段1：数据收集（500步，无恢复）"
+echo "阶段1：数据收集（1000步，无恢复）"
 echo "=========================================="
-echo "📝 注意：如果500步数据训练效果不好，可以继续生成更多数据"
+echo "📝 注意："
+echo "   - 此阶段生成1000步数据用于后续编码器训练"
+echo "   - 如果1000步数据训练效果不好，可以继续生成更多数据"
+echo "   - 生成的数据会自动保存到 logs/ 目录，需手动确认使用哪个数据集"
 echo ""
 python3 scripts/paper_experiment_stage1_data_collection.py
 python3 main.py -e "" -m 0 2>&1 | tee "$LOG_DIR/stage1_data_collection_${TIMESTAMP}.log"
 echo "✅ 阶段1完成"
+echo ""
+
+# 数据管理：找到最新生成的数据并拷贝到训练目录
+echo "数据管理：查找并拷贝阶段1生成的数据..."
+LATEST_LOG_DIR=$(find logs -maxdepth 1 -name "RPiEdge_BWGD2_1000*" -type d | sort -r | head -1)
+if [ -z "$LATEST_LOG_DIR" ]; then
+    echo "❌ 错误：未找到阶段1生成的数据（RPiEdge_BWGD2_1000*）"
+    echo "   请确认阶段1运行成功，NUM_SIM_STEPS=1000，且数据已保存到 logs/ 目录"
+    exit 1
+fi
+echo "✅ 找到数据目录：$LATEST_LOG_DIR"
+
+# 确保目标目录存在
+mkdir -p "recovery/PreGANSrc/data/simulator"
+
+# 拷贝数据到训练数据目录
+cp "$LATEST_LOG_DIR/time_series.npy" "recovery/PreGANSrc/data/simulator/time_series.npy"
+cp "$LATEST_LOG_DIR/schedule_series.npy" "recovery/PreGANSrc/data/simulator/schedule_series.npy"
+echo "✅ 数据已拷贝到 recovery/PreGANSrc/data/simulator/"
 echo ""
 
 # 阶段2：编码器训练（FPE/Transformer/FCN）
@@ -57,12 +79,11 @@ echo ""
 
 # 阶段3：GAN训练（每个方法分别训练）
 echo "=========================================="
-echo "阶段3：在线训练GAN（300步，可根据需要调整）"
+echo "阶段3：在线训练GAN（1200步，可根据需要调整）"
 echo "=========================================="
 echo "📝 注意："
 echo "   - 如果效果不好，可以多训练几次"
 echo "   - 如果程序被终止，可以从已有checkpoint继续训练"
-echo "   - 中间保存频率：每50步保存一次stats（减少内存压力）"
 echo ""
 
 for method in PreGAN PreGANPlus PreGANPlusEnhanced; do
