@@ -1,6 +1,6 @@
 #!/bin/bash
 # 按照论文流程运行完整实验
-# 阶段1：数据收集 -> 阶段2：FPE训练（自动）-> 阶段3：GAN训练 -> 阶段4：测试评估
+# 阶段1：数据收集 -> 阶段2+3：编码器训练（自动）+ GAN训练 -> 阶段2：CMODLB编码器训练 -> 阶段4：测试评估
 
 set -e
 
@@ -54,18 +54,62 @@ cp "$LATEST_LOG_DIR/schedule_series.npy" "recovery/PreGANSrc/data/simulator/sche
 echo "✅ 数据已拷贝到 recovery/PreGANSrc/data/simulator/"
 echo ""
 
-# 阶段2：编码器训练（FPE/Transformer/FCN）
+# 阶段2+3合并：编码器训练 + GAN训练（PreGAN/PreGANPlus/PreGANPlusEnhanced）
 echo "=========================================="
-echo "阶段2：编码器训练（FPE/Transformer/FCN）"
+echo "阶段2+3合并：编码器训练 + GAN训练（1200步）"
 echo "=========================================="
-echo "📝 注意：编码器的训练是自动进行的"
+echo "📝 注意："
+echo "   - 编码器训练是自动的：如果checkpoint不存在或epoch == -1，会自动训练"
+echo "   - 编码器训练使用阶段1收集的1000步数据（离线训练）"
+echo "   - 编码器训练完成后，会继续运行1200步的GAN训练"
+echo "   - PreGAN和PreGANPlus使用不同的编码器（FPE vs Transformer）"
+echo "   - PreGANPlus和PreGANPlusEnhanced共享相同的Transformer编码器"
+echo "   - Transformer编码器只在PreGANPlus阶段训练一次，PreGANPlusEnhanced直接使用"
+echo "   - 如果效果不好，可以多训练几次"
+echo "   - 如果程序被终止，可以从已有checkpoint继续训练"
+echo ""
+
+# 先训练PreGAN（FPE编码器）
+echo ""
+echo "--- 训练 PreGAN（FPE编码器自动训练 + GAN训练）---"
+python3 scripts/paper_experiment_stage3_gan_training.py --method PreGAN
+python3 main.py -e "" -m 0 2>&1 | tee "$LOG_DIR/stage2+3_training_PreGAN_${TIMESTAMP}.log"
+echo "✅ PreGAN 训练完成"
+
+# 然后训练PreGANPlus（Transformer编码器，会训练并保存）
+echo ""
+echo "--- 训练 PreGANPlus（Transformer编码器自动训练 + GAN训练）---"
+python3 scripts/paper_experiment_stage3_gan_training.py --method PreGANPlus
+python3 main.py -e "" -m 0 2>&1 | tee "$LOG_DIR/stage2+3_training_PreGANPlus_${TIMESTAMP}.log"
+echo "✅ PreGANPlus 训练完成（Transformer编码器已保存）"
+
+# 最后训练PreGANPlusEnhanced（使用已训练的Transformer编码器，不重复训练）
+echo ""
+echo "--- 训练 PreGANPlusEnhanced（使用已训练的Transformer编码器 + GAN训练）---"
+echo "📝 注意：PreGANPlusEnhanced使用与PreGANPlus相同的Transformer编码器"
+echo "   - Transformer编码器已在PreGANPlus阶段训练完成"
+echo "   - 此阶段直接加载已训练的Transformer，不重复训练"
+python3 scripts/paper_experiment_stage3_gan_training.py --method PreGANPlusEnhanced
+python3 main.py -e "" -m 0 2>&1 | tee "$LOG_DIR/stage2+3_training_PreGANPlusEnhanced_${TIMESTAMP}.log"
+echo "✅ PreGANPlusEnhanced 训练完成"
+
+echo ""
+echo "✅ 阶段2+3完成"
+echo ""
+
+# 阶段2：CMODLB编码器训练（单独处理，因为它不需要GAN训练）
+echo "=========================================="
+echo "阶段2：CMODLB编码器训练（1200步）"
+echo "=========================================="
+echo "📝 注意：CMODLB不需要GAN训练，只需要编码器训练"
+echo "   - 编码器的训练是自动进行的"
 echo "   - 如果checkpoint不存在，会在首次运行时自动训练"
 echo "   - 训练数据来自 recovery/PreGANSrc/data/"
 echo "   - 训练完成后模型保存到 checkpoints/ 目录"
+echo "   - 使用1200步确保环境稳定，统计数据准确"
 echo ""
 
-# 训练所有需要编码器的方法
-for method in PreGAN PreGANPlus PreGANPlusEnhanced CMODLB; do
+for method in CMODLB; do
     echo ""
     echo "--- 训练 $method 编码器 ---"
     python3 scripts/paper_experiment_stage2_encoder_training.py --method "$method"
@@ -74,28 +118,7 @@ for method in PreGAN PreGANPlus PreGANPlusEnhanced CMODLB; do
 done
 
 echo ""
-echo "✅ 阶段2完成"
-echo ""
-
-# 阶段3：GAN训练（每个方法分别训练）
-echo "=========================================="
-echo "阶段3：在线训练GAN（1200步，可根据需要调整）"
-echo "=========================================="
-echo "📝 注意："
-echo "   - 如果效果不好，可以多训练几次"
-echo "   - 如果程序被终止，可以从已有checkpoint继续训练"
-echo ""
-
-for method in PreGAN PreGANPlus PreGANPlusEnhanced; do
-    echo ""
-    echo "--- 训练 $method ---"
-    python3 scripts/paper_experiment_stage3_gan_training.py --method "$method"
-    python3 main.py -e "" -m 0 2>&1 | tee "$LOG_DIR/stage3_gan_training_${method}_${TIMESTAMP}.log"
-    echo "✅ $method 训练完成"
-done
-
-echo ""
-echo "✅ 阶段3完成"
+echo "✅ 阶段2（CMODLB）完成"
 echo ""
 
 # 阶段4：测试评估（所有方法对比）

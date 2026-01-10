@@ -79,56 +79,37 @@ conda activate pregan
 
 ### 2. 运行实验
 
-#### 方法1: 使用实验脚本（推荐）⭐
+#### 方法1: 使用一键脚本（推荐）⭐
 
 ```bash
-# 运行完整对比实验（FPE-GAN, TF-GAN, MAMO-GAN）
-bash scripts/run_experiment.sh
+# 运行完整论文实验流程（阶段1→阶段2+3→阶段2→阶段4）
+bash scripts/run_paper_experiment.sh
 ```
 
-#### 方法2: 使用批量运行脚本
+**实验流程**：
+1. 阶段1：数据收集（1000步）
+2. 阶段2+3：编码器训练 + GAN训练（1200步）
+   - PreGAN, PreGANPlus, PreGANPlusEnhanced
+3. 阶段2：CMODLB编码器训练（1200步）
+4. 阶段4：测试评估（100步，所有方法对比）
+
+#### 方法2: 分阶段运行
 
 ```bash
-# 运行所有方法
-python scripts/batch_run_experiments.py \
-    --models PreGAN,PreGANPlus,PreGANPlusEnhanced \
-    --steps 100
+# 阶段1：数据收集
+python3 scripts/paper_experiment_stage1_data_collection.py
+python3 main.py -e "" -m 0
 
-# 只运行MAMO-GAN
-python scripts/batch_run_experiments.py \
-    --models PreGANPlusEnhanced \
-    --steps 100
+# 阶段2+3：编码器训练 + GAN训练（某个方法）
+python3 scripts/paper_experiment_stage3_gan_training.py --method PreGAN
+python3 main.py -e "" -m 0
+
+# 阶段4：测试评估（某个方法）
+python3 scripts/paper_experiment_stage4_testing.py --method PreGAN
+python3 main.py -e "" -m 0
 ```
 
-#### 方法3: 运行重复实验（验证结果稳定性）
-
-```bash
-# 运行3次重复实验（默认）
-bash scripts/run_repeat_experiments.sh
-
-# 运行5次重复实验
-bash scripts/run_repeat_experiments.sh 5
-```
-
-#### 方法4: 在main.py中手动切换方法
-
-编辑 `main.py` 的第119行，切换不同的Recovery方法：
-
-```python
-# 使用FPE-GAN (PreGAN)
-recovery = PreGANRecovery(HOSTS, environment, training = True)
-
-# 使用TF-GAN (PreGANPlus)
-recovery = PreGANPlusRecovery(HOSTS, environment, training = True)
-
-# 使用MAMO-GAN (PreGANPlusEnhanced)
-recovery = PreGANPlusEnhancedRecovery(HOSTS, environment, training = True)
-```
-
-然后运行：
-```bash
-python main.py -e "" -m 2
-```
+**详细说明**：参见 [实验运行说明.md](实验运行说明.md)
 
 ---
 
@@ -170,15 +151,15 @@ PreGANPlus/
 
 ## 🔧 配置说明
 
-### MAMO-GAN最佳配置（方案6）
+### MAMO-GAN当前配置（优化能量和响应时间）
 
 在 `recovery/PreGANPlusEnhanced.py` 中可以调整以下超参数：
 
 ```python
-# 多目标权重
-energy_weight = 0.3               # 能量优化权重
-response_time_weight = 0.3       # 响应时间约束权重
-migration_cost_weight = 0.4       # 迁移成本约束权重
+# 多目标权重（当前配置：平衡能量和响应时间）
+energy_weight = 0.40              # 能量优化权重（增强能量优势）
+response_time_weight = 0.45       # 响应时间约束权重（保持响应时间优势）
+migration_cost_weight = 0.15      # 迁移成本约束权重（接受更高的迁移次数）
 
 # 约束阈值
 sla_threshold = 2800.0            # SLA阈值（秒）
@@ -188,6 +169,11 @@ migration_cost_threshold = 130    # 迁移成本阈值
 cooldown_period = 3               # 冷却期（epochs）
 max_migrations_per_step = 3       # 每步最大迁移数
 ```
+
+**策略说明**：
+- ✅ **能量权重0.40**：增强能量优化，保持能量优势
+- ✅ **响应时间权重0.45**：保持响应时间优势
+- ⚠️ **迁移成本权重0.15**：降低权重，因为迁移次数上不可能占优
 
 ---
 

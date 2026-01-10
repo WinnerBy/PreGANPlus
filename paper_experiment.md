@@ -5,14 +5,21 @@
 ## 1. 实验流程概览
 
 ```
-阶段1: 数据收集 (1000个间隔)
+阶段1: 数据收集 (1000步)
    ↓
-阶段2: 离线训练FPE (收敛)
+阶段2+3: 编码器训练（自动）+ GAN训练 (1200步)
+   - PreGAN/PreGANPlus/PreGANPlusEnhanced
+   - 编码器训练使用阶段1的1000步数据（离线训练）
+   - GAN训练使用1200步数据（在线训练）
    ↓
-阶段3: 在线训练GAN (300个间隔，可根据需要调整)
+阶段2: CMODLB编码器训练 (1200步)
+   - CMODLB（不需要GAN训练）
    ↓
-阶段4: 测试评估 (100个间隔)
+阶段4: 测试评估 (100步)
+   - 所有方法对比
 ```
+
+**注意**：阶段2和阶段3已合并，编码器训练在GAN训练开始时自动进行。
 
 ---
 
@@ -55,10 +62,13 @@ python main.py -e "" -m 0
 
 ---
 
-## 3. 阶段2：离线训练FPE
+## 3. 阶段2+3：编码器训练 + GAN训练（合并）
 
 ### 目的
-训练故障原型编码器（FPE），学习故障模式
+1. 自动训练编码器（FPE/Transformer/FCN），学习故障模式
+2. 在线训练GAN，学习最优迁移策略
+
+**重要更新**：阶段2和阶段3已合并。编码器训练在GAN训练开始时自动进行。
 
 ### 训练参数（论文）
 
@@ -105,25 +115,30 @@ python main.py -e "" -m 0
 #### 实际使用
 
 ```python
-# 在阶段3运行GAN训练时，FPE/Transformer会自动训练（如果未训练）
+# 在阶段2+3运行GAN训练时，FPE/Transformer会自动训练（如果未训练）
 recovery = PreGANRecovery(HOSTS, environment, training=True)
 # 如果FPE未训练，会自动训练；如果已训练，直接加载
+# 编码器训练完成后，会继续运行1200步的GAN训练
 ```
 
-**注意**：不需要手动调用 `train_fpe_offline()` 或 `save_fpe_weights()`，这些功能已集成在 `load_models()` 方法中。
+**注意**：
+- 不需要手动调用 `train_fpe_offline()` 或 `save_fpe_weights()`，这些功能已集成在 `load_models()` 方法中
+- 编码器训练使用阶段1收集的1000步数据（离线训练）
+- GAN训练使用1200步数据（在线训练）
 
 ---
 
-## 4. 阶段3：在线训练GAN
+## 4. 阶段2+3：编码器训练 + GAN训练（合并）
 
 ### 目的
-训练生成器和判别器，学习最优迁移策略
+1. 自动训练编码器（FPE/Transformer），学习故障模式
+2. 在线训练GAN，学习最优迁移策略
 
 ### main.py参数配置
 
 ```python
 # Global constants
-NUM_SIM_STEPS = 1200        # 可根据需要调整，论文使用1200个间隔 [19]
+NUM_SIM_STEPS = 1200        # GAN训练步数，论文使用1200个间隔 [19]
 HOSTS = 16
 CONTAINERS = 16
 TOTAL_POWER = 1000
@@ -141,16 +156,30 @@ scheduler = GOBIScheduler('energy_latency_16')
 recovery = PreGANRecovery(HOSTS, environment, training=True)
 # FPE会自动加载（如果已训练）或自动训练（如果未训练）
 # 训练完成后FPE会被自动冻结
+# 然后继续运行1200步的GAN训练
 
 # 或训练PreGANPlus (TF-GAN)
 recovery = PreGANPlusRecovery(HOSTS, environment, training=True)
 # Transformer会自动加载（如果已训练）或自动训练（如果未训练）
-# 训练完成后Transformer会被自动冻结
+# 训练完成后Transformer不会被冻结（支持在线调优）
+# 然后继续运行1200步的GAN训练
 
 # 或训练PreGANPlusEnhanced (MAMO-GAN)
 recovery = PreGANPlusEnhancedRecovery(HOSTS, environment, training=True)
 # Transformer会自动加载（如果已训练）或自动训练（如果未训练）
+# 注意：PreGANPlusEnhanced与PreGANPlus共享相同的Transformer编码器
+# 如果PreGANPlus已训练，PreGANPlusEnhanced会直接使用已训练的Transformer（不重复训练）
+# 然后继续运行1200步的多目标GAN训练
 ```
+
+**重要说明**：
+- ✅ **PreGAN**：使用FPE编码器（`checkpoints/simulator_FPE_16.ckpt`）
+- ✅ **PreGANPlus**：使用Transformer编码器（`checkpointsplus/simulator_Transformer_16.ckpt`）
+- ✅ **PreGANPlusEnhanced**：**共享PreGANPlus的Transformer编码器**
+  - 两者使用相同的checkpoint文件：`checkpointsplus/simulator_Transformer_16.ckpt`
+  - 如果先训练PreGANPlus，Transformer会被训练并保存
+  - 然后训练PreGANPlusEnhanced时，会直接加载已训练的Transformer，**不重复训练**
+  - 这样可以节省训练时间，避免重复训练
 
 ### GAN训练参数（论文）
 
@@ -159,7 +188,7 @@ recovery = PreGANPlusEnhancedRecovery(HOSTS, environment, training=True)
 | 生成器学习率 | 0.0001 | [15] |
 | 判别器学习率 | 0.0001 | [15] |
 | QoS权重 (β) | 0.5 | [16][22] |
-| 训练间隔数 | 300 | 实际使用（论文使用1200 [19]，可根据需要调整） |
+| 训练间隔数 | 1200 | 论文配置 [19]，可根据需要调整 |
 | **注意** | - | 如果效果不好，可以多训练几次 |
 | **内存优化** | - | 中间保存频率：每50步保存一次stats |
 
@@ -180,34 +209,71 @@ recovery = PreGANPlusEnhancedRecovery(HOSTS, environment, training=True)
 
 ### 数据量建议
 
-**论文配置 vs 实际配置**：
-
-| 阶段 | 论文配置 | 实际配置 | 建议 |
-|------|---------|---------|------|
-| 阶段1：数据收集 | 1000步 | 500步 | 如果效果不好，可增加到1000步 |
-| 阶段3：GAN训练 | 1200步 | 300步 | 如果效果不好，可逐步增加到600-800步 |
-
-**数据量不足的潜在影响**：
-- 数据收集不足可能导致故障模式覆盖不全，编码器学习不充分
-- GAN训练不足可能导致生成器未充分学习最优迁移策略，多目标优化未收敛
-
-**建议**：
-1. **先使用当前配置（500步数据收集，300步GAN训练）测试权重调整效果**
-2. **如果效果仍不理想，再考虑增加训练步数**：
-   - 阶段1：增加到1000步（重新收集数据）
-   - 阶段3：逐步增加到600-800步（可在已有300步基础上继续训练）
-
 ### 运行命令
+
+**使用一键脚本（推荐）**：
 ```bash
-python main.py -e "" -m 0
+bash scripts/run_paper_experiment.sh
+```
+
+**或手动运行**：
+```bash
+# 配置阶段2+3
+python3 scripts/paper_experiment_stage3_gan_training.py --method PreGAN
+python3 main.py -e "" -m 0
 ```
 
 ### 输出
-- 训练好的模型：`models/pregan_complete.pth` 或 `models/pregan_plus_complete.pth`
+- 编码器模型：`recovery/PreGANSrc/checkpoints/simulator_FPE_16.ckpt`（PreGAN）
+- 编码器模型：`recovery/PreGANSrc/checkpointsplus/simulator_Transformer_16.ckpt`（PreGANPlus/PreGANPlusEnhanced）
+- GAN模型：`recovery/PreGANSrc/checkpoints/simulator_Gen_16.ckpt` 和 `simulator_Disc_16.ckpt`
+- 训练日志：`experiment_logs/paper_experiment/stage2+3_training_*.log`
 
 ---
 
-## 5. 阶段4：测试评估
+## 5. 阶段2：CMODLB编码器训练
+
+### 目的
+训练CMODLB的FCN编码器（CMODLB不需要GAN训练）
+
+### main.py参数配置
+
+```python
+# Global constants
+NUM_SIM_STEPS = 1200        # 使用1200步确保环境稳定
+HOSTS = 16
+CONTAINERS = 16
+TOTAL_POWER = 1000
+ROUTER_BW = 10000
+INTERVAL_TIME = 300
+NEW_CONTAINERS = 5
+
+# Workload
+workload = BWGD2(NEW_CONTAINERS, 1.5)
+
+# Scheduler
+scheduler = GOBIScheduler('energy_latency_16')
+
+# Recovery
+recovery = CMODLBRecovery(HOSTS, environment, training=False)
+# FCN编码器会自动加载（如果已训练）或自动训练（如果未训练）
+# 训练完成后FCN会被自动冻结
+```
+
+### 运行命令
+
+```bash
+python3 scripts/paper_experiment_stage2_encoder_training.py --method CMODLB
+python3 main.py -e "" -m 0
+```
+
+### 输出
+- FCN编码器模型：`recovery/CMODLBSrc/checkpoints/simulator_FCN_16.ckpt`
+- 训练日志：`experiment_logs/paper_experiment/stage2_encoder_training_CMODLB_*.log`
+
+---
+
+## 6. 阶段4：测试评估
 
 ### 目的
 在独立测试集上评估模型性能

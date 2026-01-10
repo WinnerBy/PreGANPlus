@@ -36,10 +36,17 @@ def modify_main_py_for_encoder_training(method='PreGAN'):
     # 读取main.py
     content = MAIN_PY.read_text()
     
-    # 修改NUM_SIM_STEPS = 10（短步数，仅用于触发训练）
+    # 对于CMODLB，设置为1200步（环境稳定）
+    # 对于其他方法，保持10步（但实际已经合并到阶段3了）
+    if method == 'CMODLB':
+        steps = 1200
+    else:
+        steps = 10
+    
+    # 修改NUM_SIM_STEPS
     content = re.sub(
         r'^(\s*)NUM_SIM_STEPS\s*=\s*\d+',
-        r'\1NUM_SIM_STEPS = 10',
+        lambda m: f"{m.group(1)}NUM_SIM_STEPS = {steps}",
         content,
         flags=re.MULTILINE
     )
@@ -65,7 +72,10 @@ def modify_main_py_for_encoder_training(method='PreGAN'):
     MAIN_PY.write_text(content)
     
     print(f"✅ 已修改main.py配置：")
-    print(f"   - NUM_SIM_STEPS = 10（短步数，仅用于触发训练）")
+    if method == 'CMODLB':
+        print(f"   - NUM_SIM_STEPS = {steps}（环境稳定，编码器训练使用离线数据）")
+    else:
+        print(f"   - NUM_SIM_STEPS = {steps}（短步数，仅用于触发训练）")
     print(f"   - NEW_CONTAINERS = 5")
     print(f"   - recovery = {recovery_line}")
     print("")
@@ -74,6 +84,7 @@ def modify_main_py_for_encoder_training(method='PreGAN'):
         print("   - CMODLB的FCN编码器会自动训练（如果checkpoint不存在）")
         print("   - 训练数据来自 recovery/PreGANSrc/data/")
         print("   - 训练30个epoch后自动保存并冻结")
+        print("   - 使用1200步确保环境稳定，统计数据准确")
     else:
         print("   - FPE/Transformer编码器会自动训练（如果checkpoint不存在）")
         print("   - 训练数据来自 recovery/PreGANSrc/data/")

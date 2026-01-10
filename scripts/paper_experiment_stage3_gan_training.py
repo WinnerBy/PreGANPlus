@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-阶段3：在线训练GAN脚本
-目的：训练生成器和判别器，学习最优迁移策略
-参数：300个间隔（可根据需要调整），training=True
-注意：如果效果不好，可以多训练几次
-内存优化：中间保存频率为每50步保存一次stats
+阶段2+3合并：编码器训练 + GAN训练脚本
+目的：
+  1. 如果编码器未训练（epoch == -1），自动训练编码器（使用阶段1的1000步数据）
+  2. 编码器训练完成后，继续运行1200步的GAN训练
+参数：1200步，training=True
+注意：
+  - 编码器训练是自动的，使用阶段1收集的1000步数据（离线训练）
+  - GAN训练是在线的，使用1200步运行中的数据
+  - 如果效果不好，可以多训练几次
 """
 
 import sys
@@ -24,9 +28,9 @@ RECOVERY_MAP = {
 }
 
 def modify_main_py_for_gan_training(method='PreGAN'):
-    """修改main.py用于GAN训练阶段"""
+    """修改main.py用于编码器训练 + GAN训练阶段"""
     print("=" * 60)
-    print(f"阶段3：在线训练GAN - {method}")
+    print(f"阶段2+3合并：编码器训练 + GAN训练 - {method}")
     print("=" * 60)
     
     # 获取Recovery类名
@@ -72,7 +76,9 @@ def modify_main_py_for_gan_training(method='PreGAN'):
     print(f"   - recovery = {recovery_line}")
     print("")
     print("📝 注意：")
-    print("   - 编码器已在阶段2训练完成，此阶段只加载已训练的编码器")
+    print("   - 编码器训练是自动的：如果checkpoint不存在或epoch == -1，会自动训练")
+    print("   - 编码器训练使用阶段1收集的1000步数据（离线训练）")
+    print("   - 编码器训练完成后，会继续运行1200步的GAN训练")
     print("   - GAN会在在线运行过程中训练（1200步）")
     print("   - 如果效果不好，可以多训练几次（再次运行此阶段）")
     print("   - PreGANPlus支持在线微调Transformer编码器（如果启用）")
@@ -80,7 +86,7 @@ def modify_main_py_for_gan_training(method='PreGAN'):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='阶段3：在线训练GAN')
+    parser = argparse.ArgumentParser(description='阶段2+3合并：编码器训练 + GAN训练')
     parser.add_argument('--method', type=str, default='PreGAN',
                        choices=['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced'],
                        help='要训练的方法（代码中的实际名称：PreGAN, PreGANPlus, PreGANPlusEnhanced）')
