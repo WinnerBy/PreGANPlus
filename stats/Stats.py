@@ -1,4 +1,9 @@
 import numpy as np
+import logging
+# 抑制matplotlib字体警告
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+import matplotlib
+matplotlib.use('Agg')  # 使用非交互式后端
 import matplotlib.pyplot as plt
 import pandas as pd
 from scheduler.GOBI import GOBIScheduler
@@ -101,11 +106,12 @@ class Stats():
 		metrics['energy'] = [host.getPower()*self.env.intervaltime for host in self.env.hostlist]
 		metrics['energytotalinterval'] = np.sum(metrics['energy'])
 		metrics['energypercontainerinterval'] = np.sum(metrics['energy'])/self.env.getNumActiveContainers()
-		metrics['responsetime'] = [c.totalExecTime + c.totalMigrationTime for c in destroyed]
+		# Ensure response time components are non-negative
+		metrics['responsetime'] = [max(0, c.totalExecTime + c.totalMigrationTime) for c in destroyed]
 		metrics['avgresponsetime'] = np.average(metrics['responsetime']) if len(destroyed) > 0 else 0
 		metrics['migrationtime'] = [c.totalMigrationTime for c in destroyed]
 		metrics['avgmigrationtime'] = np.average(metrics['migrationtime']) if len(destroyed) > 0 else 0
-		metrics['slaviolations'] = len(np.where([c.destroyAt > c.sla for c in destroyed]))
+		metrics['slaviolations'] = int(np.sum([c.destroyAt > c.sla for c in destroyed]))
 		metrics['slaviolationspercentage'] = metrics['slaviolations'] * 100.0 / len(destroyed) if len(destroyed) > 0 else 0
 		metrics['waittime'] = [c.startAt - c.createAt for c in destroyed]
 		# metrics['energytotalinterval_pred'], metrics['avgresponsetime_pred'] = self.runSimulationGOBI()

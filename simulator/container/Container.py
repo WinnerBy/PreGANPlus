@@ -68,10 +68,12 @@ class Container():
 		# time - migration time with apparent ips
 		assert self.hostid != -1
 		self.totalMigrationTime += lastMigrationTime
-		execTime = self.env.intervaltime - lastMigrationTime
+		# Ensure execution time is non-negative even if migration exceeds interval
+		execTime = max(0, self.env.intervaltime - lastMigrationTime)
 		apparentIPS = self.getApparentIPS()
 		requiredExecTime = (self.ipsmodel.totalInstructions - self.ipsmodel.completedInstructions) / apparentIPS if apparentIPS else 0
-		self.totalExecTime += min(execTime, requiredExecTime)
+		# Prevent decreasing totalExecTime due to negative execTime; clamp contribution to >= 0
+		self.totalExecTime += max(0, min(execTime, requiredExecTime))
 		self.ipsmodel.completedInstructions += apparentIPS * min(execTime, requiredExecTime)
 
 	def allocateAndExecute(self, hostID, allocBw):

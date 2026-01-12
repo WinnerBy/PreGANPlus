@@ -102,12 +102,21 @@ def train_gan_multiobjective(gen, disc, gopt, dopt, embedding, schedule_data, en
     # Task 4: Migration cost prediction loss
     migration_cost_target = torch.tensor([actual_migration_count], dtype=torch.double, device=migration_cost_pred.device)
     migration_cost_pred_loss = mse_loss(migration_cost_pred, migration_cost_target)
+
+    # Normalize regression losses to comparable scales to avoid DLoss explosion
+    # Typical scales: energy ~ 2e4 (MSE ~ O(1e8)), rt ~ O(1e3-1e4) w.r.t SLA (MSE ~ large), mc ~ O(1e2)
+    energy_norm_denom = (torch.tensor([max(new_energy, orig_energy)], dtype=torch.double, device=energy_pred.device) ** 2)
+    rt_norm_denom = (torch.tensor([sla_threshold], dtype=torch.double, device=response_time_pred.device) ** 2)
+    mc_norm_denom = (torch.tensor([migration_cost_threshold], dtype=torch.double, device=migration_cost_pred.device) ** 2)
+    energy_loss_norm = energy_loss / energy_norm_denom
+    response_time_pred_loss_norm = response_time_pred_loss / rt_norm_denom
+    migration_cost_pred_loss_norm = migration_cost_pred_loss / mc_norm_denom
     
     # Discriminator total loss (weighted combination)
     disc_loss = (class_loss + 
-                 0.2 * energy_loss +
-                 0.1 * response_time_pred_loss +
-                 0.1 * migration_cost_pred_loss)
+                 0.2 * energy_loss_norm +
+                 0.1 * response_time_pred_loss_norm +
+                 0.1 * migration_cost_pred_loss_norm)
     
     disc_loss.backward()
     dopt.step()
@@ -126,17 +135,19 @@ def train_gan_multiobjective(gen, disc, gopt, dopt, embedding, schedule_data, en
     
     # Method 2: Energy constraint loss (encourage predicting lower energy)
     energy_upper_bound = torch.tensor([orig_energy], dtype=torch.double, device=energy_pred_gen.device)
-    gen_energy_loss = torch.relu(energy_pred_gen - energy_upper_bound + 0.1)
+    # Normalize energy constraint by upper bound to keep scale reasonable
+    gen_energy_loss = torch.relu(energy_pred_gen - energy_upper_bound + 0.1) / energy_upper_bound
     
     # Method 3: Response time constraint loss (penalize exceeding SLA threshold)
     sla_threshold_tensor = torch.tensor([sla_threshold], dtype=torch.double, device=response_time_pred_gen.device)
     response_time_excess = torch.relu(response_time_pred_gen - sla_threshold_tensor)
-    gen_response_time_loss = response_time_weight * response_time_excess
+    # Normalize RT constraint by SLA so its magnitude is comparable
+    gen_response_time_loss = response_time_weight * (response_time_excess / sla_threshold_tensor)
     
     # Also penalize actual response time
     actual_response_time_tensor = torch.tensor([new_response_time], dtype=torch.double, device=response_time_pred_gen.device)
     actual_response_time_excess = torch.relu(actual_response_time_tensor - sla_threshold_tensor)
-    gen_actual_response_time_loss = response_time_weight * 0.5 * actual_response_time_excess
+    gen_actual_response_time_loss = response_time_weight * 0.5 * (actual_response_time_excess / sla_threshold_tensor)
     
     # Method 4: Migration cost constraint loss (进一步增强版，关键)
     # Penalize if predicted migration cost exceeds threshold

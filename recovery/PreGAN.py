@@ -115,6 +115,17 @@ class PreGANRecovery(Recovery):
         # Run encoder
         schedule_data = torch.tensor(self.env.scheduler.result_cache).double()
         anomaly, prototype = self.run_encoder(schedule_data)
+        # Evaluate and print AScore/CScore on-the-fly (testing path)
+        try:
+            folder = os.path.join(data_folder, self.env_name)
+            train_time_data, train_schedule_data, anomaly_data, class_data = \
+                load_on_the_fly_dataset(self.model, folder, self.env.stats)
+            anomaly_score, class_score = accuracy(self.model, train_time_data, train_schedule_data, anomaly_data, class_data, None)
+            factor = PROTO_UPDATE_FACTOR + PROTO_UPDATE_MIN
+            tqdm.write(f'Epoch {self.epoch},\tFactor = {factor},\tAScore = {anomaly_score},\tCScore = {class_score}')
+        except Exception as e:
+            # Non-fatal: continue if on-the-fly dataset or evaluation is unavailable
+            pass
         # If no anomaly predicted, return original decision 
         anomaly_detected = False
         for a in anomaly:

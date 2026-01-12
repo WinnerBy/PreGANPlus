@@ -91,7 +91,8 @@ class Task():
 		self.json_body["fields"]["Host_id"] = hostID
 		_, lastMigrationTime = self.env.controller.create(self.json_body, self.env.getHostByID(self.hostid).ip)
 		self.totalMigrationTime += lastMigrationTime
-		execTime = self.env.intervaltime - lastMigrationTime
+		# Ensure non-negative execution time
+		execTime = max(0, self.env.intervaltime - lastMigrationTime)
 		self.totalExecTime += execTime
 
 	def allocateAndrestore(self, hostID):
@@ -106,7 +107,8 @@ class Task():
 		_, restoreTime = self.env.controller.restore(self.creationID, self.id, self.application, tar_host_ip)
 		lastMigrationTime = checkpointTime + migrationTime + restoreTime
 		self.totalMigrationTime += lastMigrationTime
-		execTime = self.env.intervaltime - lastMigrationTime
+		# Ensure non-negative execution time
+		execTime = max(0, self.env.intervaltime - lastMigrationTime)
 		self.totalExecTime += execTime
 		
 	def destroy(self):
@@ -136,5 +138,6 @@ class Task():
 		if not self.active:
 			finished_at = parser.parse(data['finished_at']).replace(tzinfo=None)
 			now = datetime.utcnow()
-			self.totalExecTime -= abs((now - finished_at).total_seconds())
+			# Avoid negative totalExecTime due to post-finish adjustment
+			self.totalExecTime = max(0, self.totalExecTime - abs((now - finished_at).total_seconds()))
 			self.execError = data['error']
