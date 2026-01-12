@@ -143,5 +143,5 @@ graphernew.py
 
 
 # checkpoint
-*.ckpt
+# *.ckpt  # ENABLED for git tracking (training complete)
 *.ckpt.bak
