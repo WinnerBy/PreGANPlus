@@ -16,6 +16,15 @@ modstat.py
 *.so
 logs/
 
+# Experiment data and logs (exclude all, but allow final archive)
+experiment_data/
+experiment_logs/stage4_*/
+experiment_logs/*.log
+!experiment_logs/FINAL_ARCHIVE/
+!experiment_logs/最终选择结果报告.md
+!experiment_logs/ALL_RESULTS_AGGREGATED.json
+!experiment_logs/OPTIMAL_RESULTS_FINAL_OPTIMIZED.json
+
 # Distribution / packaging
 .Python
 build/
