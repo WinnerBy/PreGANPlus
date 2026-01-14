@@ -25,7 +25,7 @@ RECOVERY_MAP = {
     'CMODLB': 'CMODLBRecovery',
 }
 
-def modify_main_py_for_testing(method='PreGAN'):
+def modify_main_py_for_testing(method='PreGAN', temp_file=None):
     """修改main.py用于测试评估阶段"""
     print("=" * 60)
     print(f"阶段4：测试评估 - {method}")
@@ -36,8 +36,11 @@ def modify_main_py_for_testing(method='PreGAN'):
     if not recovery_class.endswith('Recovery'):
         recovery_class = method + 'Recovery'
     
-    # 读取main.py
-    content = MAIN_PY.read_text()
+    # 确定要修改的文件
+    target_file = Path(temp_file) if temp_file else MAIN_PY
+    
+    # 读取文件
+    content = target_file.read_text()
     
     # 修改NUM_SIM_STEPS = 100
     content = re.sub(
@@ -57,15 +60,16 @@ def modify_main_py_for_testing(method='PreGAN'):
     
     # 修改recovery为指定方法，training=False
     recovery_line = f"recovery = {recovery_class}(HOSTS, environment, training = False)"
+    # 修复：避免重复的 "recovery = "，匹配完整的recovery行
     content = re.sub(
-        r'^(\s*)recovery\s*=\s*.*$',
+        r'^(\s*)recovery\s*=\s*.*Recovery.*\(.*\)$',
         r'\1' + recovery_line,
         content,
         flags=re.MULTILINE
     )
     
     # 保存修改
-    MAIN_PY.write_text(content)
+    target_file.write_text(content)
     
     print(f"✅ 已修改main.py配置：")
     print(f"   - NUM_SIM_STEPS = 100")
@@ -88,9 +92,11 @@ if __name__ == "__main__":
                        choices=['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced',
                                'PCFT', 'DFTM', 'ECLB', 'CMODLB'],
                        help='要测试的方法（代码中的实际名称）')
+    parser.add_argument('--temp-file', type=str, default=None,
+                       help='临时文件路径（用于避免权限问题）')
     args = parser.parse_args()
     
-    modify_main_py_for_testing(args.method)
+    modify_main_py_for_testing(args.method, args.temp_file)
     print("=" * 60)
     print("配置完成！现在可以运行：")
     print("  python main.py -e \"\" -m 0")

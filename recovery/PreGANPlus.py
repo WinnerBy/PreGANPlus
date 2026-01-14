@@ -142,9 +142,10 @@ class PreGANPlusRecovery(Recovery):
         embedding = [torch.zeros_like(p) if torch.argmax(anomaly[i]).item() == 0 else p for i, p in enumerate(prototype)]
         self.gan_plotter.update_class_detected(get_classes(embedding, self.model))
         embedding = torch.stack(embedding)
-        # Pass through GAN
-        self.train_gan(embedding, schedule_data)
-        # Tune Model
-        self.tune_model()
+        # Pass through GAN (only when training)
+        if self.training:
+            self.train_gan(embedding, schedule_data)
+            # Tune Model during training only
+            self.tune_model()
         return self.recover_decision(embedding, schedule_data, original_decision)
 

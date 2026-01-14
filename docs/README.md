@@ -1,167 +1,199 @@
-# MAMO-GAN 文档索引
+# PreGANPlus 项目文档
 
-欢迎查阅MAMO-GAN项目的文档。本文档提供了所有相关文档的索引和简要说明。
-
-**方法命名**:
-- **FPE-GAN** (Fault Prediction Encoder GAN): 原PreGAN方法
-- **TF-GAN** (Transformer-based Fault GAN): 原PreGANPlus方法
-- **MAMO-GAN** (Migration-Aware Multi-Objective GAN): 我们的改进方法（原PreGANPlusEnhanced）
+**创建日期**: 2026-01-14  
+**项目**: Migration-Aware Multi-Objective GAN for Fault-Tolerant Edge Computing
 
 ---
 
-## 📚 文档结构（已精简）
+## 📚 文档导航
+
+本文档库包含完整的项目文档，分为四个主要部分：
+
+### 1. [方法设计文档](01_Methods/README.md)
+
+详细说明三种GAN方法的设计思路和实现：
+
+- **[FPE-GAN设计](01_Methods/FPE-GAN_Design.md)** - Fault Prediction Encoder GAN（原PreGAN）
+- **[TF-GAN设计](01_Methods/TF-GAN_Design.md)** - Transformer-based Fault GAN（原PreGANPlus）
+- **[MAMO-GAN设计](01_Methods/MAMO-GAN_Design.md)** - Migration-Aware Multi-Objective GAN（原PreGANPlusEnhanced）
+
+### 2. [实验设计文档](02_Experiments/README.md)
+
+详细说明实验配置和流程：
+
+- **[实验环境设置](02_Experiments/Experimental_Setup.md)** - 硬件、软件、数据环境配置（待补充）
+- **[传统方法实现](02_Experiments/Baseline_Methods.md)** - CMODLB, DFTM, ECLB, PCFT的实现细节
+- **[实验参数配置](02_Experiments/Experimental_Configuration.md)** - 详细的参数说明
+- **[实验流程说明](02_Experiments/Experimental_Workflow.md)** - 四阶段实验流程详解
+
+### 3. [实验结果分析](03_Results/README.md)
+
+详细分析实验结果：
+
+- **[对比分析](03_Results/Comparative_Analysis.md)** - 方法间的全面对比
+- **[性能指标分析](03_Results/Performance_Analysis.md)** - 详细的性能指标分析
+- **[详细发现](03_Results/Detailed_Findings.md)** - 深入的发现和案例研究（待补充）
+
+### 4. [用户指南](04_User_Guide/README.md)
+
+使用说明和快速开始：
+
+- **[安装指南](04_User_Guide/Installation.md)** - 环境配置和依赖安装（待补充）
+- **[快速开始](04_User_Guide/Quick_Start.md)** - 快速开始使用（待补充）
+- **[高级用法](04_User_Guide/Advanced_Usage.md)** - 高级功能和自定义（待补充）
+
+---
+
+## 🎯 方法概述
+
+### 方法演进关系
 
 ```
-docs/
-├── README.md                           # 本文档（文档索引）⭐
-│
-├── User_Guide.md                       # 使用指南（推荐）⭐
-├── Implementation_Guide.md             # 实现指南（推荐）⭐
-├── Method_Naming_Guide.md              # 方法命名指南
-│
-├── Experiments/                        # 实验相关文档（5个核心文档）
-│   ├── README.md                       # 实验文档索引
-│   ├── Repeat_Experiments_Analysis.md  # 重复实验分析（最新）⭐
-│   ├── Comprehensive_Experiment_Comparison.md  # 综合实验对比 ⭐
-│   ├── Final_Experiment_Analysis.md    # 最终实验分析
-│   └── Optimization_Process_Summary.md # 优化过程总结
-│
-├── Paper/                              # 论文相关文档（2个核心文档）
-│   ├── README.md                       # 论文文档索引
-│   ├── Architecture_Comparison.md     # 架构对比文档（推荐）⭐
-│   └── Paper_Storyline_Final.md       # 最终论文故事线（推荐）⭐
-│
-└── archive/                             # 已归档的过时文档
+FPE-GAN (PreGAN)
+    ↓ + Transformer编码器
+TF-GAN (PreGANPlus)
+    ↓ + Migration-Aware Generator
+    + Multi-Objective Discriminator
+    + 迁移控制机制
+MAMO-GAN (PreGANPlusEnhanced)
 ```
 
----
+### 方法命名对照
 
-## 🎯 快速导航
-
-### 我想...
-
-#### 🚀 开始使用
-- **使用指南** → [User_Guide.md](./User_Guide.md) ⭐ **推荐**
-- **实现指南** → [Implementation_Guide.md](./Implementation_Guide.md) ⭐ **推荐**
-- **方法命名** → [Method_Naming_Guide.md](./Method_Naming_Guide.md)
-
-#### 📊 查看最新实验结果
-- **重复实验分析** → [Experiments/Repeat_Experiments_Analysis.md](./Experiments/Repeat_Experiments_Analysis.md) ⭐ **最新（3次重复实验）**
-- **综合实验对比** → [Experiments/Comprehensive_Experiment_Comparison.md](./Experiments/Comprehensive_Experiment_Comparison.md) ⭐
-- **优化过程总结** → [Experiments/Optimization_Process_Summary.md](./Experiments/Optimization_Process_Summary.md)
-
-#### 📝 了解架构设计
-- **架构对比文档** → [Paper/Architecture_Comparison.md](./Paper/Architecture_Comparison.md) ⭐ **推荐（详细架构对比）**
-
-#### 📖 撰写论文
-- **最终论文故事线** → [Paper/Paper_Storyline_Final.md](./Paper/Paper_Storyline_Final.md) ⭐ **推荐**
+| 代码名称 | 论文名称 | 说明 |
+|---------|---------|------|
+| PreGAN | FPE-GAN | Fault Prediction Encoder GAN |
+| PreGANPlus | TF-GAN | Transformer-based Fault GAN |
+| PreGANPlusEnhanced | MAMO-GAN | Migration-Aware Multi-Objective GAN |
 
 ---
 
-## 📋 文档分类说明
+## 📊 实验结果摘要
 
-### 核心文档（推荐阅读）
+### 最终选择结果
 
-1. **User_Guide.md** - 使用指南
-   - 如何运行实验
-   - 脚本使用方法
-   - 故障排除
+| 方法 | 迁移次数 | 能耗(kWh) | 响应时间(s) | SLA违规 | 综合评分 |
+|------|---------|----------|-----------|---------|---------|
+| **MAMO-GAN** | 173 | **1959.52** | **219.63** | **95** | ⭐⭐⭐⭐⭐ |
+| **TF-GAN** | 157 | 1983.01 | 240.42 | 113 | ⭐⭐⭐⭐ |
+| **FPE-GAN** | 165 | 1983.40 | **214.02** | 104 | ⭐⭐⭐⭐ |
+| CMODLB | 164 | 2000.81 | 263.80 | 102 | ⭐⭐⭐ |
+| DFTM | 210 | 1998.10 | 257.85 | 105 | ⭐⭐⭐ |
+| ECLB | 407 | 1929.97 | 236.33 | 102 | ⭐⭐ |
+| PCFT | 1043 | 2119.40 | 226.55 | 130 | ⭐ |
 
-2. **Implementation_Guide.md** - 实现指南
-   - 模型架构说明
-   - 实现细节
-   - 配置参数
+### 关键发现
 
-3. **Method_Naming_Guide.md** - 方法命名指南
-   - FPE-GAN, TF-GAN, MAMO-GAN命名说明
+1. **MAMO-GAN完全符合预期**
+   - 能耗降低1.18%（相比TF-GAN）
+   - 响应时间改善8.65%（相比TF-GAN）
+   - SLA违规减少15.93%（相比TF-GAN）
 
-### 实验文档 (Experiments/)
+2. **GAN方法在迁移控制上显著优于传统方法**
+   - 迁移数减少21%-84%
+   - 这是GAN方法的核心优势
 
-包含核心实验分析和优化过程总结（5个文档）。
-
-**核心文档**:
-- `Repeat_Experiments_Analysis.md` - 重复实验分析（最新，3次重复实验）⭐
-- `Comprehensive_Experiment_Comparison.md` - 综合实验对比 ⭐
-- `Optimization_Process_Summary.md` - 优化过程总结
-
-### 论文文档 (Paper/)
-
-包含论文故事线和架构设计文档（2个核心文档）。
-
-**推荐阅读**:
-- `Architecture_Comparison.md` - 详细架构对比（FPE-GAN, TF-GAN, MAMO-GAN）⭐
-- `Paper_Storyline_Final.md` - 最终论文故事线 ⭐
+3. **方法演进有效**
+   - 从FPE-GAN到TF-GAN：序列建模能力提升
+   - 从TF-GAN到MAMO-GAN：多目标优化显著改善性能
 
 ---
 
-## 📊 最新实验结果摘要
+## 🔗 相关资源
 
-### 重复实验（方案6配置，3次重复实验平均值）
+### 代码资源
 
-**配置**: MAMO-GAN最佳配置
-- `energy_weight = 0.3`
-- `response_time_weight = 0.3`
-- `migration_cost_weight = 0.4`
-- `migration_cost_threshold = 130`
-- `cooldown_period = 3`
-- `max_migrations_per_step = 3`
+- **项目根目录**: `/home/user/workspace/PreGANPlus/`
+- **实现代码**: `recovery/` 目录
+- **实验脚本**: `scripts/` 目录
+- **模型定义**: `recovery/PreGANSrc/src/models.py`
 
-| 指标 | vs TF-GAN | 评估 |
-|------|-----------|------|
-| **总能量** | **-2.76%** | ⭐⭐⭐⭐ 保持优势 |
-| **响应时间** | **-2.70%** | ⭐⭐⭐⭐ 略有优势 |
-| **SLA违约率** | **6.14%** | ⚠️ 略高但可接受 |
-| **迁移次数** | **+23.85%** | ⚠️⚠️ 较高但可接受 |
+### 实验结果
 
-**详细分析**: 参见 [Experiments/Repeat_Experiments_Analysis.md](./Experiments/Repeat_Experiments_Analysis.md)
+- **最终结果**: `final_results/` 目录
+- **实验数据**: `experiment_data/` 目录
+- **实验日志**: `experiment_logs/` 目录
+- **对比图表**: `final_results/plots/` 目录
 
----
+### 外部文档
 
-## 🎯 推荐阅读路径
-
-### 新用户
-1. [User_Guide.md](./User_Guide.md) - 了解如何使用
-2. [Method_Naming_Guide.md](./Method_Naming_Guide.md) - 了解方法命名
-3. [Paper/Architecture_Comparison.md](./Paper/Architecture_Comparison.md) - 了解架构设计
-4. [Experiments/Repeat_Experiments_Analysis.md](./Experiments/Repeat_Experiments_Analysis.md) - 查看最新实验结果
-
-### 开发者
-1. [Implementation_Guide.md](./Implementation_Guide.md) - 了解实现细节
-2. [Paper/Architecture_Comparison.md](./Paper/Architecture_Comparison.md) - 了解架构设计
-3. [Experiments/Optimization_Process_Summary.md](./Experiments/Optimization_Process_Summary.md) - 了解优化过程
-
-### 研究者
-1. [Paper/Architecture_Comparison.md](./Paper/Architecture_Comparison.md) - 了解架构设计
-2. [Paper/Paper_Storyline_Final.md](./Paper/Paper_Storyline_Final.md) - 了解论文故事线
-3. [Experiments/Repeat_Experiments_Analysis.md](./Experiments/Repeat_Experiments_Analysis.md) - 了解最新实验结果
-4. [Method_Naming_Guide.md](./Method_Naming_Guide.md) - 了解方法命名
+- **项目README**: [README.md](../README.md)
+- **绘图说明**: [scripts/README_绘图说明.md](../scripts/README_绘图说明.md)
+- **最终选择结果报告**: [final_results/summary/最终选择结果报告.md](../final_results/summary/最终选择结果报告.md)
 
 ---
 
-## 📝 文档更新日志
+## 📝 文档状态
 
-- **2026-01-03**: 文档结构精简和更新
-  - 精简Paper文件夹（从8个文档减少到2个核心文档）
-  - 精简docs顶层文档（从13个文档减少到4个核心文档）
-  - 更新所有文档使用新命名（FPE-GAN, TF-GAN, MAMO-GAN）
-  - 整理过时文档到archive目录
+### ✅ 已完成
 
-- **2026-01-03**: 实验文档整理
-  - 精简Experiments文件夹（从37个文档减少到5个核心文档）
-  - 创建优化过程总结文档
-  - 整理过时文档到archive目录
+- [x] 方法设计文档（FPE-GAN, TF-GAN, MAMO-GAN）
+- [x] 实验设计文档（参数配置、流程说明、传统方法）
+- [x] 实验结果分析（对比分析、性能指标分析）
+- [x] 文档导航和索引
 
-- **2026-01-03**: 方法重命名和文档整理
-  - 创建方法命名指南（FPE-GAN, TF-GAN, MAMO-GAN）
-  - 创建详细架构对比文档（Architecture_Comparison.md）
-  - 更新论文故事线文档，使用新命名
+### ⏳ 待补充
+
+- [ ] 实验环境设置文档
+- [ ] 详细发现和案例研究
+- [ ] 用户指南（安装、快速开始、高级用法）
 
 ---
 
-## 🎉 开始使用
+## 📖 快速开始
 
-根据您的需求，选择相应的文档开始阅读。建议按照推荐阅读路径进行。
+### 阅读顺序建议
+
+1. **初学者**: 
+   - 先阅读 [方法设计总览](01_Methods/README.md)
+   - 然后阅读 [实验设计总览](02_Experiments/README.md)
+   - 最后阅读 [结果分析总览](03_Results/README.md)
+
+2. **研究者**:
+   - 直接阅读 [MAMO-GAN设计](01_Methods/MAMO-GAN_Design.md)
+   - 然后阅读 [对比分析](03_Results/Comparative_Analysis.md)
+   - 最后阅读 [性能指标分析](03_Results/Performance_Analysis.md)
+
+3. **实验者**:
+   - 先阅读 [实验流程说明](02_Experiments/Experimental_Workflow.md)
+   - 然后阅读 [实验参数配置](02_Experiments/Experimental_Configuration.md)
+   - 最后阅读 [传统方法实现](02_Experiments/Baseline_Methods.md)
 
 ---
 
-*最后更新: 2026-01-03*
+## 🎓 文档编写规范
+
+### 文档结构
+
+每个文档都应包含：
+- 概述（Overview）
+- 详细内容（Main Content）
+- 关键发现（Key Findings）
+- 相关文档链接（Related Documents）
+
+### 命名规范
+
+- 方法设计文档: `{Method-Name}_Design.md`
+- 实验设计文档: `Experimental_{Topic}.md`
+- 结果分析文档: `{Analysis-Type}_Analysis.md`
+
+### 更新记录
+
+每个文档都包含：
+- 创建日期
+- 最后更新日期
+- 版本信息
+
+---
+
+## 📞 反馈与贡献
+
+如有问题或建议，请：
+1. 查看相关文档
+2. 检查代码注释
+3. 参考实验结果
+
+---
+
+**最后更新**: 2026-01-14  
+**文档版本**: 1.0

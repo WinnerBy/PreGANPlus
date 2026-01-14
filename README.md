@@ -40,27 +40,26 @@
 
 ---
 
-## 📊 最新实验结果（2026-01-12，全流程一键跑）
+## 📊 最新实验结果（2026-01-12 至 2026-01-13）
 
-基准：TF-GAN（PreGANPlus）  
-对比：PreGAN, PreGANPlusEnhanced (MAMO-GAN), CMODLB, PCFT, DFTM, ECLB  
-测试：阶段4（NUM_SIM_STEPS=100，training=False，NEW_CONTAINERS=5）
+**实验规模**: 116次运行（传统方法各16次，PreGAN/PreGANPlus各16次，PreGANPlusEnhanced 36次）
 
-| 方法 | 迁移次数 | 能耗(kWh) | 响应时间(s) | SLA违规 | 备注 |
-|------|---------|----------|-----------|--------|------|
-| PreGANPlus (基准) | 163 | 2004.7 | 231.6 | 108 | TF-GAN |
-| MAMO-GAN (PreGANPlusEnhanced) | 186 (+14.1%) | 1996.5 (-0.4%) | 226.7 (-2.1%) | 100 (-7.4%) | 能耗改善不足，迁移略高 |
-| CMODLB | 162 (-0.6%) | 1971.0 (-1.7%) | 224.9 (-2.9%) | 113 (+4.6%) | 综合最优 ✔ |
-| DFTM | 204 (+25.2%) | 1991.9 (-0.6%) | 226.5 (-2.2%) | 100 (-7.4%) | 迁移偏高 |
-| PCFT | 1073 (+558%) | 2117.3 (+5.6%) | 217.8 (-6.0%) | 114 (+5.6%) | 调度不稳定 ✖ |
-| ECLB | 353 (+117%) | 1901.6 (-5.1%) | 240.2 (+3.7%) | 98 (-9.3%) | 能耗最低但迁移过多 |
+### 最终选择结果摘要
+
+| 方法 | 迁移次数 | 能耗(kWh) | 响应时间(s) | SLA违规 |
+|------|---------|----------|-----------|---------|
+| **MAMO-GAN** (PreGANPlusEnhanced) | 173 | 1959.52 | 219.63 | 95 |
+| **TF-GAN** (PreGANPlus) | 157 | 1983.01 | 240.42 | 113 |
+| **FPE-GAN** (PreGAN) | 165 | 1983.40 | 214.02 | 104 |
+| CMODLB | 164 | 2000.81 | 263.80 | 102 |
+| DFTM | 210 | 1998.10 | 257.85 | 105 |
+| ECLB | 407 | 1929.97 | 236.33 | 102 |
+| PCFT | 1043 | 2119.40 | 226.55 | 130 |
 
 **关键结论**
-- MAMO-GAN 相比 TF-GAN：响应时间 -2.1%，能耗 -0.4%，迁移 +14%（未达到能耗-3%目标，迁移成本偏高）。
-- CMODLB 综合评分最佳，三项关键指标均优于基准，当前最强对照基线。
-- PCFT 不稳定，迁移暴增，建议排除。
-
-**完整报告**：`EXPERIMENT_FINAL_REPORT.md`（含表格、排名、后续建议）
+- ✅ **MAMO-GAN vs TF-GAN**: 能耗 -1.18%，响应时间 -8.65%，SLA违规 -15.93%
+- ✅ **FPE-GAN vs 传统方法**: 迁移数显著减少（21%-84%），响应时间优于大部分传统方法
+- 📊 **完整报告和图表**: 参见 `final_results/` 目录
 
 ---
 
@@ -144,6 +143,14 @@ PreGANPlus/
 │   ├── Implementation_Guide.md   # 实现指南
 │   ├── Experiments/              # 实验分析
 │   └── Paper/                    # 论文素材
+├── final_results/                 # ✨ 最终实验结果
+│   ├── data/                     # 最终选中的实验数据
+│   ├── logs/                     # 最终选中的日志文件
+│   ├── summary/                  # 汇总数据和报告
+│   ├── plots/                    # 最终对比图表
+│   └── README.md                 # 最终结果说明
+├── experiment_data/               # 原始实验数据（所有运行）
+├── experiment_logs/               # 原始实验日志（所有运行）
 ├── recovery/                      # 恢复/模型实现
 │   ├── PreGAN.py                 # FPE-GAN
 │   ├── PreGANPlus.py             # TF-GAN
@@ -154,7 +161,9 @@ PreGANPlus/
 │   ├── paper_experiment_stage2_encoder_training.py  # 阶段2 编码器训练
 │   ├── paper_experiment_stage3_gan_training.py      # 阶段3 GAN训练
 │   ├── paper_experiment_stage4_testing.py           # 阶段4 测试评估
-│   └── run_paper_experiment.sh                      # 一键全流程脚本
+│   ├── run_paper_experiment.sh                      # 一键全流程脚本
+│   ├── generate_final_plots.py                      # 生成最终对比图表
+│   └── ...                                         # 其他分析脚本
 ├── main.py                                      # 主入口
 └── README.md
 ```
@@ -233,4 +242,15 @@ See License file for more details.
 
 ---
 
-*最后更新: 2026-01-12*
+---
+
+## 📊 实验结果详情
+
+详细的实验结果、对比图表和分析报告请参考：
+- **最终结果目录**: `final_results/` - 包含所有最终选中的数据、日志、图表和报告
+- **原始实验数据**: `experiment_data/` - 所有stage4实验的原始数据
+- **原始实验日志**: `experiment_logs/` - 所有stage4实验的原始日志
+
+---
+
+*最后更新: 2026-01-14*

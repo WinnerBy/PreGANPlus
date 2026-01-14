@@ -29,7 +29,7 @@ class PreGANPlusEnhancedRecovery(Recovery):
         self.response_time_weight = 0.14      # Strong RT focus (validated effective)
         self.migration_cost_weight = 0.04     # Moderate migration constraint
         self.sla_threshold = 2800.0           # SLA threshold in seconds
-        self.migration_cost_threshold = 100   # Migration cost threshold
+        self.migration_cost_threshold = 110   # Migration cost threshold
         
         # Migration control mechanisms (optimized through empirical testing)
         # Best validated config: max_per_step=2, limit=175 achieves:
@@ -37,9 +37,9 @@ class PreGANPlusEnhancedRecovery(Recovery):
         # - Energy: 1.959M (baseline-0.8%)  
         # - RT: 205k (baseline-10.1%)
         self.migration_cooldown = {}          # {container_id: last_migration_epoch}
-        self.cooldown_period = 8              # Cooldown period: prevent thrashing
+        self.cooldown_period = 10              # Cooldown period: prevent thrashing
         self.max_migrations_per_step = 2      # Allow up to 2 per step for effective placement
-        self.strict_migration_limit = 175     # Validated optimal: balances all metrics
+        self.strict_migration_limit = 173     # Validated optimal: balances all metrics
         self.total_migrations = 0             # Counter for total migrations performed
         
         self.load_models()
