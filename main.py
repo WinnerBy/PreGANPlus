@@ -59,6 +59,12 @@ from recovery.PCFT import PCFTRecovery
 from recovery.DFTM import DFTMRecovery
 from recovery.ECLB import ECLBRecovery
 from recovery.CMODLB import CMODLBRecovery
+from recovery.Ablation import (
+    AblationNoTransformerRecovery,
+    AblationNoGATRecovery,
+    AblationNoMigrationAwareRecovery,
+    AblationNoMultiObjectiveRecovery,
+)
 
 # Auxiliary imports
 from stats.Stats import *

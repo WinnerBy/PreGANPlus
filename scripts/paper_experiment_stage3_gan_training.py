@@ -25,6 +25,10 @@ RECOVERY_MAP = {
     'PreGAN': 'PreGANRecovery',
     'PreGANPlus': 'PreGANPlusRecovery',
     'PreGANPlusEnhanced': 'PreGANPlusEnhancedRecovery',
+    'AblationNoTransformer': 'AblationNoTransformerRecovery',
+    'AblationNoGAT': 'AblationNoGATRecovery',
+    'AblationNoMigrationAware': 'AblationNoMigrationAwareRecovery',
+    'AblationNoMultiObjective': 'AblationNoMultiObjectiveRecovery',
 }
 
 def modify_main_py_for_gan_training(method='PreGAN'):
@@ -88,7 +92,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='阶段2+3合并：编码器训练 + GAN训练')
     parser.add_argument('--method', type=str, default='PreGAN',
-                       choices=['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced'],
+                       choices=['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced',
+                                'AblationNoTransformer', 'AblationNoGAT',
+                                'AblationNoMigrationAware', 'AblationNoMultiObjective'],
                        help='要训练的方法（代码中的实际名称：PreGAN, PreGANPlus, PreGANPlusEnhanced）')
     args = parser.parse_args()
     

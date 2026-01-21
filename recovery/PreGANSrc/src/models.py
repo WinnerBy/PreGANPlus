@@ -416,6 +416,65 @@ class Transformer_16(nn.Module):
         return anomaly_scores, prototypes
 
 
+# Ablation: Transformer encoder without GAT (temporal-only)
+class TransformerNoGAT_16(nn.Module):
+    def __init__(self):
+        super(TransformerNoGAT_16, self).__init__()
+        self.name = 'TransformerNoGAT_16'
+        self.lr = 0.0001
+        self.n_hosts = 16
+        self.n_window = 3
+        self.gat_input_feats = 3
+        self.d_model = 16
+        self.nhead = 2
+        self.dim_feedforward = 64
+        self.num_layers = 2
+
+        self.latent_dim = self.n_hosts * self.d_model * self.n_window  # 16*16*3=768
+
+        # Temporal-only projection (no GAT)
+        self.time_encoder = nn.Linear(self.gat_input_feats, self.d_model)  # 3→16
+        self.pos_encoder = PositionalEncoding(self.d_model, 0.1, self.n_window)
+        encoder_layers = TransformerEncoderLayer(
+            d_model=self.d_model,
+            nhead=self.nhead,
+            dim_feedforward=self.dim_feedforward,
+            dropout=0.1
+        )
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=self.num_layers)
+
+        self.anomaly_decoder = nn.Sequential(
+            nn.Linear(self.latent_dim, 2 * self.n_hosts),
+            nn.LeakyReLU(True),
+            nn.Unflatten(1, (self.n_hosts, 2))
+        )
+        self.prototype_decoder = nn.Sequential(
+            nn.Linear(self.latent_dim, PROTO_DIM * self.n_hosts),
+            nn.Sigmoid(),
+            nn.Unflatten(1, (self.n_hosts, PROTO_DIM))
+        )
+
+        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.double)
+                         for _ in range(self.n_hosts)]
+
+    def encode(self, t, s):
+        # t: [3, 48] -> [3, 16, 3]
+        t_reshaped = t.view(self.n_window, self.n_hosts, self.gat_input_feats)
+        time_encoded = self.time_encoder(t_reshaped)  # [3, 16, 16]
+        pos_encoded = self.pos_encoder(time_encoded)
+        memory = self.transformer_encoder(pos_encoded)  # [3, 16, 16]
+        memory_flat = memory.permute(1, 0, 2).reshape(1, -1)  # [1, 768]
+        return memory_flat
+
+    def forward(self, t, s):
+        latent = self.encode(t, s)
+        anomaly_flat = self.anomaly_decoder(latent)  # [1, 16, 2]
+        anomaly_scores = [anomaly_flat[0, i].unsqueeze(0) for i in range(self.n_hosts)]
+        prototype_flat = self.prototype_decoder(latent)  # [1, 16, PROTO_DIM]
+        prototypes = [prototype_flat[0, i] for i in range(self.n_hosts)]
+        return anomaly_scores, prototypes
+
+
 ############## Enhanced Models for PreGANPlus Enhanced ##############
 
 # Attention-Enhanced Generator Network

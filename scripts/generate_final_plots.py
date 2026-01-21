@@ -286,31 +286,26 @@ def compute_metrics(all_stats, Models, sla):
             if ylabel == 'Number of Task migrations':
                 d = np.array([i['nummigrations'] for i in stats.metrics]) if stats else np.array([0])
                 Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
-            if ylabel == 'Average Wait Time (intervals)':
-                d = np.array([(np.average(i['waittime'])-1 if i != [] else 0) for i in stats.metrics]) if stats else np.array([0.])
-                mask = d > 0
-                if mask.sum() > 0:
-                    Data[ylabel][model], CI[ylabel][model] = np.sum(d[mask]), mean_confidence_interval(d[mask])
-                else:
-                    Data[ylabel][model], CI[ylabel][model] = 0, 0
             if ylabel == 'Average CPU Utilization (%)':
                 d = np.array([(np.average(i['cpu']) if i != [] else 0) for i in stats.hostinfo]) if stats else np.array([0.])
-                Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
+				Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
             if ylabel == 'Average number of containers per Interval':
                 d = np.array([(np.average(i['numcontainers']) if i != [] else 0.) for i in stats.hostinfo]) if stats else np.array([0.])
-                Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
+				Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
             if ylabel == 'Average RAM Utilization (%)':
                 d = np.array([(np.average(100*np.array(i['ram'])/(np.array(i['ram'])+np.array(i['ramavailable']))) if i != [] else 0) for i in stats.hostinfo]) if stats else np.array([0.])
-                Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
+				Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
             if ylabel == 'Scheduling Time (seconds)':
                 d = np.array([i['schedulingtime'] for i in stats.schedulerinfo]) if stats else np.array([0.])
-                Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
+				Data[ylabel][model], CI[ylabel][model] = np.sum(d), mean_confidence_interval(d)
             if ylabel == "Fairness (Jain's index)":
                 d = np.array([jains_fairness(np.array(i['ips'])) for i in stats.activecontainerinfo]) if stats else np.array([0])
                 Data[ylabel][model], CI[ylabel][model] = np.mean(d), mean_confidence_interval(d)
             if ylabel == 'Fairness':
                 d = np.array([fairness(np.array(i['ips'])) for i in stats.activecontainerinfo]) if stats else np.array([0])
                 Data[ylabel][model], CI[ylabel][model] = np.mean(d), mean_confidence_interval(d)
+			# Average Wait Time (intervals) 的统计口径在原脚本中为跨 interval 的聚合值（与总完成任务规模相关），
+			# 保持该口径以保证与已生成的最终图表一致。
     
     return Data, CI
 

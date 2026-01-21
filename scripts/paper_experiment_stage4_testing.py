@@ -19,6 +19,10 @@ RECOVERY_MAP = {
     'PreGAN': 'PreGANRecovery',
     'PreGANPlus': 'PreGANPlusRecovery',
     'PreGANPlusEnhanced': 'PreGANPlusEnhancedRecovery',
+    'AblationNoTransformer': 'AblationNoTransformerRecovery',
+    'AblationNoGAT': 'AblationNoGATRecovery',
+    'AblationNoMigrationAware': 'AblationNoMigrationAwareRecovery',
+    'AblationNoMultiObjective': 'AblationNoMultiObjectiveRecovery',
     'PCFT': 'PCFTRecovery',
     'DFTM': 'DFTMRecovery',
     'ECLB': 'ECLBRecovery',
@@ -90,6 +94,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='阶段4：测试评估')
     parser.add_argument('--method', type=str, default='PreGAN',
                        choices=['PreGAN', 'PreGANPlus', 'PreGANPlusEnhanced',
+                               'AblationNoTransformer', 'AblationNoGAT',
+                               'AblationNoMigrationAware', 'AblationNoMultiObjective',
                                'PCFT', 'DFTM', 'ECLB', 'CMODLB'],
                        help='要测试的方法（代码中的实际名称）')
     parser.add_argument('--temp-file', type=str, default=None,

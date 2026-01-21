@@ -148,6 +148,7 @@ dmypy.json
 .pyre/
 todo.txt
 *.pdf
+*.docx
 graphernew.py
 
 
