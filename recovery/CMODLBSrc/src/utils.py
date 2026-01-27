@@ -4,8 +4,17 @@ import numpy as np
 from .constants import *
 from .models import *
 
+# 尝试导入设备管理器
+try:
+    from recovery.PreGANSrc.src.device_manager import get_device_manager
+    USE_DEVICE_MANAGER = True
+except ImportError:
+    USE_DEVICE_MANAGER = False
+
 def convert_to_windows(data, model):
-	data = torch.tensor(data).double()
+	# 获取兼容的dtype
+	dtype = get_device_manager().get_dtype() if USE_DEVICE_MANAGER else torch.float64
+	data = torch.tensor(data, dtype=dtype)
 	windows = []; w_size = model.n_window
 	for i, g in enumerate(data): 
 		if i >= w_size: w = data[i-w_size:i]
@@ -257,11 +266,22 @@ def load_model(folder, fname, modelname):
 	import recovery.CMODLBSrc.src.models
 	path = os.path.join(folder, fname)
 	model_class = getattr(recovery.CMODLBSrc.src.models, modelname)
-	model = model_class().double()
+	# 获取兼容的dtype（CMODLB使用CPU，通常是float64，但保持兼容性）
+	dtype = get_device_manager().get_dtype() if USE_DEVICE_MANAGER else torch.float64
+	model = model_class().to(dtype=dtype)
+	
+	# 获取设备（默认CPU）
+	if USE_DEVICE_MANAGER:
+		device_manager = get_device_manager()
+		device = torch.device('cpu')  # CMODLB使用CPU
+	else:
+		device = torch.device('cpu')
+	
 	optimizer = torch.optim.AdamW(model.parameters() , lr=model.lr, weight_decay=1e-5)
 	if os.path.exists(path):
 		print(f"{color.GREEN}Loading pre-trained model: {model.name}{color.ENDC}")
-		checkpoint = torch.load(path)
+		# 使用weights_only=False避免PyTorch 2.x的安全警告
+		checkpoint = torch.load(path, map_location=device, weights_only=False)
 		model.load_state_dict(checkpoint['model_state_dict'])
 		optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 		epoch = checkpoint['epoch']
@@ -269,6 +289,10 @@ def load_model(folder, fname, modelname):
 	else:
 		print(f"{color.GREEN}Creating new model: {model.name}{color.ENDC}")
 		epoch = -1; accuracy_list = []
+	
+	# 将模型移到正确的设备
+	model = model.to(device)
+	
 	return model, optimizer, epoch, accuracy_list
 
 # Misc

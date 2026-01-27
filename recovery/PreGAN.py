@@ -7,6 +7,7 @@ from .Recovery import *
 from .PreGANSrc.src.constants import *
 from .PreGANSrc.src.utils import *
 from .PreGANSrc.src.train import *
+from .PreGANSrc.src.device_manager import get_device_manager
 
 class PreGANRecovery(Recovery):
     def __init__(self, hosts, env, training = False):
@@ -17,6 +18,11 @@ class PreGANRecovery(Recovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
+        
+        # 初始化设备管理器
+        self.device_manager = get_device_manager(verbose=True)
+        self.device = self.device_manager.get_torch_device()
+        
         self.load_models()
 
     def load_models(self):
@@ -49,18 +55,22 @@ class PreGANRecovery(Recovery):
             save_model(model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model, self.optimizer, self.epoch, self.accuracy_list)
 
     def train_gan(self, embedding, schedule_data):
+        # 确保数据在正确的设备上
+        embedding = embedding.to(self.device)
+        schedule_data = schedule_data.to(self.device)
+        
         # Train discriminator
         self.disc.zero_grad()
         new_schedule_data = self.gen(embedding, schedule_data)
         probs = self.disc(schedule_data, new_schedule_data.detach())
         new_score, orig_score = run_simulation(self.env.stats, new_schedule_data), run_simulation(self.env.stats, schedule_data)
-        true_probs = torch.tensor([0, 1], dtype=torch.double) if new_score <= orig_score else torch.tensor([1, 0], dtype=torch.double)
+        true_probs = torch.tensor([0, 1], dtype=torch.double, device=self.device) if new_score <= orig_score else torch.tensor([1, 0], dtype=torch.double, device=self.device)
         disc_loss = self.ganloss(probs, true_probs.detach().clone())
         disc_loss.backward(); self.dopt.step()
         # Train generator
         self.gen.zero_grad()
         probs = self.disc(schedule_data, new_schedule_data)
-        true_probs = torch.tensor([0, 1], dtype=torch.double) # to enforce new schedule is better than original schedule
+        true_probs = torch.tensor([0, 1], dtype=torch.double, device=self.device) # to enforce new schedule is better than original schedule
         gen_loss = self.ganloss(probs, true_probs)
         gen_loss.backward(); self.gopt.step()
         # Append to accuracy list
@@ -94,6 +104,10 @@ class PreGANRecovery(Recovery):
         self.gan_plotter.plot_test(hosts_from)
         return list(decision_dict.items())
 
+        
+        # 将数据转换为torch tensor并移动到正确的设备
+        time_data = torch.tensor(time_data, dtype=torch.double, device=self.device)
+        schedule_data = schedule_data.to(self.device)
     def run_encoder(self, schedule_data):
         # Get latest data from Stat
         time_data = self.env.stats.time_series
@@ -113,7 +127,8 @@ class PreGANRecovery(Recovery):
 
     def run_model(self, time_series, original_decision):
         # Run encoder
-        schedule_data = torch.tensor(self.env.scheduler.result_cache).double()
+        dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
+        schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=dtype)
         anomaly, prototype = self.run_encoder(schedule_data)
         # Evaluate and print AScore/CScore on-the-fly (testing path)
         try:

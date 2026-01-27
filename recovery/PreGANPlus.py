@@ -7,6 +7,7 @@ from .Recovery import *
 from .PreGANSrc.src.constants import *
 from .PreGANSrc.src.utils import *
 from .PreGANSrc.src.train import *
+from .PreGANSrc.src.device_manager import get_device_manager
 
 class PreGANPlusRecovery(Recovery):
     def __init__(self, hosts, env, training = False):
@@ -18,19 +19,37 @@ class PreGANPlusRecovery(Recovery):
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
         self.save_gan = True
+        
+        # 初始化设备管理器
+        self.device_manager = get_device_manager(verbose=True)
+        # 编码器使用CPU（含GAT），GAN使用MPS/GPU
+        self.encoder_device = torch.device('cpu')
+        self.gan_device = self.device_manager.get_torch_device()
+        
         self.load_models()
 
     def load_models(self):
-        # Load encoder model
+        # Load encoder model - 放在CPU上（含GAT）
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
             load_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # 强制将编码器移到CPU
+        self.model = self.model.to(self.encoder_device)
+        if hasattr(self.model, 'gat_graph'):
+            self.model.gat_graph = self.model.gat_graph.to(self.encoder_device)
+        if hasattr(self.model, 'prototype'):
+            for i in range(len(self.model.prototype)):
+                self.model.prototype[i] = self.model.prototype[i].to(self.encoder_device)
+        
         # Train the model if not trained (offline training same as PreGAN)
         if self.epoch == -1: self.train_model()
-        # Reduce lr of encoder
-        # self.model.lr /= 5
-        # Load generator and discriminator
+        
+        # Load generator and discriminator - 放在GPU上
         self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
-            load_gan(model_plus_folder, f'{self.env_name}_{self.gen_name}.ckpt', f'{self.env_name}_{self.disc_name}.ckpt', self.gen_name, self.disc_name) 
+            load_gan(model_plus_folder, f'{self.env_name}_{self.gen_name}.ckpt', f'{self.env_name}_{self.disc_name}.ckpt', self.gen_name, self.disc_name)
+        # 将GAN模型移到GPU设备
+        self.gen = self.gen.to(self.gan_device)
+        self.disc = self.disc.to(self.gan_device)
+        
         self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
         # GAN is always tuned
         self.ganloss = nn.BCELoss()
@@ -58,18 +77,22 @@ class PreGANPlusRecovery(Recovery):
         self.accuracy_list.append((loss, factor, anomaly_score, class_score))
 
     def train_gan(self, embedding, schedule_data):
+        # 将数据移到GAN设备（GPU）
+        embedding = embedding.to(self.gan_device)
+        schedule_data = schedule_data.to(self.gan_device)
+        
         # Train discriminator
         self.disc.zero_grad()
         new_schedule_data = self.gen(embedding, schedule_data)
         probs = self.disc(schedule_data, new_schedule_data.detach())
         new_score, orig_score = run_simulation(self.env.stats, new_schedule_data), run_simulation(self.env.stats, schedule_data)
-        true_probs = torch.tensor([0, 1], dtype=torch.double) if new_score <= orig_score else torch.tensor([1, 0], dtype=torch.double)
+        true_probs = torch.tensor([0, 1], dtype=torch.double, device=self.gan_device) if new_score <= orig_score else torch.tensor([1, 0], dtype=torch.double, device=self.gan_device)
         disc_loss = self.ganloss(probs, true_probs.detach().clone())
         disc_loss.backward(); self.dopt.step()
         # Train generator
         self.gen.zero_grad()
         probs = self.disc(schedule_data, new_schedule_data)
-        true_probs = torch.tensor([0, 1], dtype=torch.double) # to enforce new schedule is better than original schedule
+        true_probs = torch.tensor([0, 1], dtype=torch.double, device=self.gan_device) # to enforce new schedule is better than original schedule
         gen_loss = self.ganloss(probs, true_probs)
         gen_loss.backward(); self.gopt.step()
         # Append to accuracy list and save model
@@ -81,6 +104,10 @@ class PreGANPlusRecovery(Recovery):
                     self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list)
 
     def recover_decision(self, embedding, schedule_data, original_decision):
+        # 将数据移到GAN设备
+        embedding = embedding.to(self.gan_device)
+        schedule_data = schedule_data.to(self.gan_device)
+        
         new_schedule_data = self.gen(embedding, schedule_data)
         probs = self.disc(schedule_data, new_schedule_data)
         self.gan_plotter.new_better(probs[1] >= probs[0])
@@ -110,6 +137,11 @@ class PreGANPlusRecovery(Recovery):
         time_data = normalize_test_time_data(time_data, self.train_time_data)
         if time_data.shape[0] >= self.model.n_window: time_data = time_data[-self.model.n_window:]
         time_data = convert_to_windows(time_data, self.model)[-1]
+        
+        # 确保数据在CPU上（编码器在CPU）
+        time_data = time_data.to(self.encoder_device)
+        schedule_data = schedule_data.to(self.encoder_device)
+        
         anomaly, prototype = self.model(time_data, schedule_data)
         
         # DEBUG: Log encoder output
@@ -122,8 +154,8 @@ class PreGANPlusRecovery(Recovery):
         return anomaly, prototype
 
     def run_model(self, time_series, original_decision):
-        # Run encoder
-        schedule_data = torch.tensor(self.env.scheduler.result_cache).double()
+        # Run encoder (在CPU上)
+        schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=torch.double, device=self.encoder_device)
         anomaly, prototype = self.run_encoder(schedule_data)
         # If no anomaly predicted, return original decision 
         anomaly_detected = False

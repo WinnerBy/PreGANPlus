@@ -11,6 +11,7 @@ from .PreGANSrc.src.constants import *
 from .PreGANSrc.src.utils import *
 from .PreGANSrc.src.train import *
 from .PreGANSrc.src.train_multiobjective import train_gan_multiobjective
+from .PreGANSrc.src.device_manager import get_device_manager
 from .PreGANPlusEnhanced import PreGANPlusEnhancedRecovery
 
 
@@ -181,7 +182,8 @@ class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
             f'Gen_{self.hosts}',
             f'Disc_{self.hosts}_MultiObjective'
         )
-        self.gen = _GenWithCostWrapper(gmodel).double()
+        dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
+        self.gen = _GenWithCostWrapper(gmodel).to(dtype=dtype)
         self.disc = dmodel
         self.gopt, self.dopt = gopt, dopt
         self.epoch, self.accuracy_list = epoch, accuracy_list

@@ -305,6 +305,19 @@ class GATHead(nn.Module):
         # h的输入形状：[batch_size, seq_len, num_nodes, in_feats] → [1, 3, 16, 3]
         batch_size, seq_len, num_nodes, in_feats = h.shape
         
+        # 保存输入设备信息（用于设备同步）
+        input_device = h.device
+        
+        # 如果图在不同设备上，需要同步
+        # 注意：DGL在MPS上可能不支持，需要使用CPU
+        from .device_manager import get_device_manager
+        device_manager = get_device_manager()
+        dgl_device = device_manager.get_dgl_device()
+        
+        # 将数据移动到DGL设备
+        if h.device != dgl_device:
+            h = h.to(dgl_device)
+        
         # 1. 调整维度顺序：将节点维度提前
         h = h.permute(0, 2, 1, 3)  # [1, 16, 3, 3]
         
@@ -344,6 +357,10 @@ class GATHead(nn.Module):
         # 8. 恢复原始维度顺序
         h_out = self.g.ndata['h'].reshape(batch_size, num_nodes, seq_len, -1)  # [1, 16, 3, 16]
         h_out = h_out.permute(0, 2, 1, 3)  # [1, 3, 16, 16]
+        
+        # 9. 将输出移回原始设备（如果需要）
+        if h_out.device != input_device:
+            h_out = h_out.to(input_device)
         
         return h_out
 

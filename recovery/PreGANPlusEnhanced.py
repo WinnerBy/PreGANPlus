@@ -10,6 +10,7 @@ from .PreGANSrc.src.constants import *
 from .PreGANSrc.src.utils import *
 from .PreGANSrc.src.train import *
 from .PreGANSrc.src.train_multiobjective import train_gan_multiobjective
+from .PreGANSrc.src.device_manager import get_device_manager
 
 class PreGANPlusEnhancedRecovery(Recovery):
     def __init__(self, hosts, env, training=False):
@@ -21,6 +22,12 @@ class PreGANPlusEnhancedRecovery(Recovery):
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
         self.save_gan = True
+        
+        # 初始化设备管理器
+        self.device_manager = get_device_manager(verbose=True)
+        # 编码器使用CPU（含GAT），GAN使用MPS/GPU
+        self.encoder_device = torch.device('cpu')
+        self.gan_device = self.device_manager.get_torch_device()
         
         # Multi-objective training hyperparameters
         # Note: Best results achieved with inference-side controls rather than heavy training weights
@@ -45,20 +52,31 @@ class PreGANPlusEnhancedRecovery(Recovery):
         self.load_models()
 
     def load_models(self):
-        # Load encoder model (same as PreGANPlus)
+        # Load encoder model (same as PreGANPlus) - 放在CPU上
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
             load_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # 强制将编码器移到CPU
+        self.model = self.model.to(self.encoder_device)
+        if hasattr(self.model, 'gat_graph'):
+            self.model.gat_graph = self.model.gat_graph.to(self.encoder_device)
+        if hasattr(self.model, 'prototype'):
+            for i in range(len(self.model.prototype)):
+                self.model.prototype[i] = self.model.prototype[i].to(self.encoder_device)
+        
         # Train the model if not trained
         if self.epoch == -1: 
             self.train_model()
         
-        # Load generator and discriminator (enhanced versions)
+        # Load generator and discriminator (enhanced versions) - 放在GPU上
         # Note: We need to modify load_gan to support new model names
         self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
             self.load_gan_enhanced(model_plus_folder, 
                                   f'{self.env_name}_{self.gen_name}.ckpt', 
                                   f'{self.env_name}_{self.disc_name}.ckpt', 
                                   self.gen_name, self.disc_name)
+        # 将GAN模型移到GPU设备
+        self.gen = self.gen.to(self.gan_device)
+        self.disc = self.disc.to(self.gan_device)
         
         self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
         # GAN is always tuned
@@ -88,8 +106,9 @@ class PreGANPlusEnhancedRecovery(Recovery):
                 raise RuntimeError(f"Model classes {base_gname} or {base_dname} not found. "
                                  f"Make sure they are defined in models.py. "
                                  f"Original error: {attr_err}")
-            gmodel = gmodel_class().double()
-            dmodel = dmodel_class().double()
+            dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
+            gmodel = gmodel_class().to(dtype=dtype)
+            dmodel = dmodel_class().to(dtype=dtype)
             gopt = torch.optim.AdamW(gmodel.parameters(), lr=gmodel.lr, weight_decay=1e-5)
             dopt = torch.optim.AdamW(dmodel.parameters(), lr=dmodel.lr, weight_decay=1e-5)
             epoch = -1
@@ -126,6 +145,10 @@ class PreGANPlusEnhancedRecovery(Recovery):
 
     def train_gan(self, embedding, schedule_data):
         """Multi-objective GAN training: balance energy, response time, and migration cost"""
+        # 将数据移到GAN设备（GPU）
+        embedding = embedding.to(self.gan_device)
+        schedule_data = schedule_data.to(self.gan_device)
+        
         # Use the multi-objective training function
         (gen_loss, disc_loss, class_loss, energy_loss, response_time_loss, migration_cost_loss,
          gen_energy_loss, gen_response_time_loss, gen_migration_cost_loss,
@@ -165,6 +188,10 @@ class PreGANPlusEnhancedRecovery(Recovery):
 
     def recover_decision(self, embedding, schedule_data, original_decision):
         """Recover decision using enhanced GAN with Phase 1 migration control optimizations"""
+        # 将数据移到GAN设备
+        embedding = embedding.to(self.gan_device)
+        schedule_data = schedule_data.to(self.gan_device)
+        
         # Generator now returns (new_schedule, predicted_migration_cost)
         new_schedule_data, predicted_migration_cost = self.gen(embedding, schedule_data)
         
@@ -259,7 +286,12 @@ class PreGANPlusEnhancedRecovery(Recovery):
         """Run encoder (same as PreGANPlus)"""
         # Get latest data from Stat
         time_data = self.env.stats.time_series
-        time_data = normalize_test_time_data(time_data, self.train_time_data)
+        
+        # 确保数据在CPU上（编码器在CPU）
+        time_data = time_data.to(self.encoder_device)
+        schedule_data = schedule_data.to(self.encoder_device)
+         (在CPU上)
+        schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=torch.double, device=self.encoder_device
         if time_data.shape[0] >= self.model.n_window:
             time_data = time_data[-self.model.n_window:]
         time_data = convert_to_windows(time_data, self.model)[-1]
@@ -268,7 +300,8 @@ class PreGANPlusEnhancedRecovery(Recovery):
     def run_model(self, time_series, original_decision):
         """Main model execution (same as PreGANPlus)"""
         # Run encoder
-        schedule_data = torch.tensor(self.env.scheduler.result_cache).double()
+        dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
+        schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=dtype)
         anomaly, prototype = self.run_encoder(schedule_data)
         
         # If no anomaly predicted, return original decision

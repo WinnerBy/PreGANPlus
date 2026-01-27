@@ -7,6 +7,14 @@ from .Recovery import *
 from .CMODLBSrc.src.constants import *
 from .CMODLBSrc.src.utils import *
 from .CMODLBSrc.src.train import *
+import torch
+
+# 导入设备管理器
+try:
+    from recovery.PreGANSrc.src.device_manager import get_device_manager
+    USE_DEVICE_MANAGER = True
+except ImportError:
+    USE_DEVICE_MANAGER = False
 
 class CMODLBRecovery(Recovery):
     def __init__(self, hosts, env, training = False):
@@ -15,6 +23,14 @@ class CMODLBRecovery(Recovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.kmeans = KMeans(n_clusters=2, random_state=0)
+        
+        # 初始化设备管理器（CMODLB使用CPU）
+        if USE_DEVICE_MANAGER:
+            self.device_manager = get_device_manager(verbose=False)
+            self.device = torch.device('cpu')  # CMODLB模型简单，使用CPU即可
+        else:
+            self.device = torch.device('cpu')
+        
         self.load_model()
         self.detections = (0, 0)
 
@@ -22,6 +38,8 @@ class CMODLBRecovery(Recovery):
         # Load encoder model
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
             load_model(model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # 将模型移到CPU设备
+        self.model = self.model.to(self.device)
         # Train the model is not trained
         if self.epoch == -1: self.train_model()
         # Freeze encoder
@@ -42,6 +60,8 @@ class CMODLBRecovery(Recovery):
         time_data = normalize_test_time_data(time_data, self.train_time_data)
         if time_data.shape[0] >= self.model.n_window: time_data = time_data[-self.model.n_window:]
         time_data = convert_to_windows(time_data, self.model)[-1]
+        # 确保数据在CPU上
+        time_data = time_data.to(self.device)
         return self.model(time_data)
 
     def recover_decision(self, pred_values, original_decision):

@@ -3,9 +3,12 @@ import torch
 import numpy as np
 from .constants import *
 from .models import *
+from .device_manager import get_device_manager
 
 def convert_to_windows(data, model):
-	data = torch.tensor(data).double()
+	# 获取推荐的dtype
+	dtype = get_device_manager().get_dtype() if hasattr(data, 'dtype') else torch.float64
+	data = torch.tensor(data, dtype=dtype)
 	windows = []; w_size = model.n_window
 	for i, g in enumerate(data): 
 		if i >= w_size: w = data[i-w_size:i]
@@ -306,7 +309,8 @@ def load_dataset(folder, model):
 	
 	# 然后归一化数据用于训练
 	time_data = normalize_time_data(time_data_raw)
-	train_schedule_data = torch.tensor(load_npyfile(folder, schedule_filename)).double()
+	dtype = get_device_manager().get_dtype()  # 获取兼容的dtype
+	train_schedule_data = torch.tensor(load_npyfile(folder, schedule_filename), dtype=dtype)
 	train_time_data = convert_to_windows(time_data, model)
 	return train_time_data, train_schedule_data, anomaly_data, class_data
 
@@ -336,14 +340,26 @@ def load_model(folder, fname, modelname):
 	import recovery.PreGANSrc.src.models
 	path = os.path.join(folder, fname)
 	model_class = getattr(recovery.PreGANSrc.src.models, modelname)
-	model = model_class().double()
+	# 获取兼容的dtype
+	dtype = get_device_manager().get_dtype()
+	model = model_class().to(dtype=dtype)
+	
+	# 获取设备管理器并将模型移动到合适的设备
+	device_manager = get_device_manager()
+	torch_device = device_manager.get_torch_device()
+	
 	optimizer = torch.optim.AdamW(model.parameters() , lr=model.lr, weight_decay=1e-5)
 	if os.path.exists(path):
 		print(f"{color.GREEN}Loading pre-trained model: {model.name}{color.ENDC}")
-		checkpoint = torch.load(path)
+		# 使用weights_only=False避免PyTorch 2.x的安全警告
+		# 同时指定map_location以确保加载到正确的设备
+		checkpoint = torch.load(path, map_location=torch_device, weights_only=False)
 		model.load_state_dict(checkpoint['model_state_dict'])
 		model.prototype = checkpoint['model_prototypes']
-		for p in model.prototype: p.requires_grad = False
+		for i, p in enumerate(model.prototype):
+			p.requires_grad = False
+			# 将prototype移动到正确的设备
+			model.prototype[i] = p.to(torch_device)
 		# if 'Att' in model.name: print(model.prototype)
 		optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 		epoch = checkpoint['epoch']
@@ -351,6 +367,15 @@ def load_model(folder, fname, modelname):
 	else:
 		print(f"{color.GREEN}Creating new model: {model.name}{color.ENDC}")
 		epoch = -1; accuracy_list = []
+	
+	# 将模型移动到正确的设备
+	model = model.to(torch_device)
+	
+	# 如果模型有GAT图，将其移动到DGL设备
+	if hasattr(model, 'gat_graph'):
+		dgl_device = device_manager.get_dgl_device()
+		model.gat_graph = model.gat_graph.to(dgl_device)
+	
 	return model, optimizer, epoch, accuracy_list
 
 def load_gan(folder, gfname, dfname, gmodelname, dmodelname):

@@ -1,5 +1,6 @@
 from .constants import *
 from .utils import *
+from .device_manager import get_device_manager
 import torch.nn as nn
 from tqdm import tqdm
 from .plotter import *
@@ -18,7 +19,7 @@ def triplet_loss(anchor, positive_class, model):
 	negative_loss = []
 	for nc in negative_class_list:
 		negative_loss.append(mse_loss(anchor, model.prototype[nc]))
-	loss = positive_loss - torch.sum(torch.tensor(negative_loss))
+	loss = positive_loss - torch.sum(torch.tensor(negative_loss, device=anchor.device))
 	if positive_loss <= negative_loss[0] and positive_loss <= negative_loss[1]:
 		factor = PROTO_UPDATE_FACTOR + PROTO_UPDATE_MIN
 		model.prototype[positive_class] = factor * anchor + (1 - factor) * model.prototype[positive_class]
