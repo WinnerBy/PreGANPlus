@@ -23,15 +23,16 @@ class Simulator():
 		self.stats.setEnvironment(self)
 		self.addHostlistInit(hostinit)
 		
-		# 故障检测配置（基于论文ADE定义）
+		# 故障检测配置（进一步减少误报）
 		self.fault_config = {
-			'cpu_threshold': 90.0,      # CPU过载阈值（%）
-			'ram_threshold': 90.0,       # RAM过载阈值（%）
-			'network_threshold': 90.0,   # 网络过载阈值（%）
-			'fault_duration_required': 60.0,  # 持续60秒
+			'cpu_threshold': 92.0,          # CPU过载阈值（%）
+			'ram_threshold': 92.0,          # RAM过载阈值（%）
+			'network_threshold': 92.0,      # 网络过载阈值（%）
+			'min_fault_intervals': 5,       # 连续5个interval超标才判定故障
+			'min_active_containers': 3,     # 主机至少有3个容器才检测
 		}
 		
-		# 故障持续时间跟踪器：{host_id: {'cpu': duration_seconds, 'ram': duration_seconds, ...}}
+		# 故障持续区间计数器：{host_id: {'cpu': intervals, 'ram': intervals, ...}}
 		self.fault_duration_tracker = {}
 		
 		# 故障历史记录：{interval: {host_id: fault_type}}
@@ -185,35 +186,43 @@ class Simulator():
 		for host in self.hostlist:
 			host_id = host.id
 			
-			# 初始化跟踪器
+				# 初始化跟踪器
 			if host_id not in self.fault_duration_tracker:
 				self.fault_duration_tracker[host_id] = {
-					'cpu': 0.0,
-					'ram': 0.0,
-					'network': 0.0
+					'cpu': 0,
+					'ram': 0,
+					'network': 0
 				}
+			
+			containers_on_host = self.getContainersOfHost(host_id)
+			# 无容器时直接清零计数，避免空载被判为故障
+			if len(containers_on_host) < self.fault_config['min_active_containers']:
+				self.fault_duration_tracker[host_id]['cpu'] = 0
+				self.fault_duration_tracker[host_id]['ram'] = 0
+				self.fault_duration_tracker[host_id]['network'] = 0
+				continue
 			
 			# 获取当前资源使用情况
 			cpu_usage = host.getCPU()  # 百分比
 			ram_size, _, _ = host.getCurrentRAM()
 			ram_usage = 100.0 * (ram_size / host.ramCap.size)  # 百分比
 			
-			# 检查CPU过载（持续60秒）
+			# 检查CPU过载（按interval计数）
 			if cpu_usage > self.fault_config['cpu_threshold']:
-				self.fault_duration_tracker[host_id]['cpu'] += self.intervaltime
+				self.fault_duration_tracker[host_id]['cpu'] += 1
 			else:
-				self.fault_duration_tracker[host_id]['cpu'] = 0.0
+				self.fault_duration_tracker[host_id]['cpu'] = 0
 			
-			# 检查RAM过载（持续60秒）
+			# 检查RAM过载（按interval计数）
 			if ram_usage > self.fault_config['ram_threshold']:
-				self.fault_duration_tracker[host_id]['ram'] += self.intervaltime
+				self.fault_duration_tracker[host_id]['ram'] += 1
 			else:
-				self.fault_duration_tracker[host_id]['ram'] = 0.0
+				self.fault_duration_tracker[host_id]['ram'] = 0
 			
-			# 判断是否发生故障（持续60秒）
-			if self.fault_duration_tracker[host_id]['cpu'] >= self.fault_config['fault_duration_required']:
+			# 判断是否发生故障（需连续min_fault_intervals个interval超标）
+			if self.fault_duration_tracker[host_id]['cpu'] >= self.fault_config['min_fault_intervals']:
 				current_faults[host_id] = 'cpu'
-			elif self.fault_duration_tracker[host_id]['ram'] >= self.fault_config['fault_duration_required']:
+			elif self.fault_duration_tracker[host_id]['ram'] >= self.fault_config['min_fault_intervals']:
 				current_faults[host_id] = 'ram'
 			# TODO: 网络过载检测（需要根据实际情况实现）
 			# elif self.fault_duration_tracker[host_id]['network'] >= self.fault_config['fault_duration_required']:

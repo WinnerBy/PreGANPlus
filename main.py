@@ -82,13 +82,13 @@ parser.add_option("-m", "--mode", action="store", dest="mode", default="0",
 opts, args = parser.parse_args()
 
 # Global constants
-NUM_SIM_STEPS = 1000  # 编码器训练阶段：使用离线数据，只需少量步数触发训练
+NUM_SIM_STEPS = 10  # 编码器训练阶段：使用离线数据，只需少量步数触发训练
 HOSTS = 16 if opts.env == '' else 16
 CONTAINERS = HOSTS
 TOTAL_POWER = 1000
 ROUTER_BW = 10000
 INTERVAL_TIME = 300 # seconds
-NEW_CONTAINERS = 5
+NEW_CONTAINERS = 5  # 再降低负载，减少长期高占用导致的频繁判故障
 DB_NAME = ''
 DB_HOST = ''
 DB_PORT = 0
@@ -123,7 +123,7 @@ def initalizeEnvironment(environment, logger):
 
 	# Initialize recovery
 	''' Can be PreGANPlusRecovery, PreGANPlusEnhancedRecovery, PreGANRecovery, PCFTRecovery, DFTMRecovery, ECLBRecovery, CMODLBRecovery '''
-	recovery = Recovery()
+	recovery = PreGANRecovery(HOSTS, environment, training = False)
 
 	# Initialize Stats
 	stats = Stats(workload, datacenter, scheduler)
