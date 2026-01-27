@@ -82,7 +82,7 @@ parser.add_option("-m", "--mode", action="store", dest="mode", default="0",
 opts, args = parser.parse_args()
 
 # Global constants
-NUM_SIM_STEPS = 100
+NUM_SIM_STEPS = 1000  # 编码器训练阶段：使用离线数据，只需少量步数触发训练
 HOSTS = 16 if opts.env == '' else 16
 CONTAINERS = HOSTS
 TOTAL_POWER = 1000
@@ -123,7 +123,7 @@ def initalizeEnvironment(environment, logger):
 
 	# Initialize recovery
 	''' Can be PreGANPlusRecovery, PreGANPlusEnhancedRecovery, PreGANRecovery, PCFTRecovery, DFTMRecovery, ECLBRecovery, CMODLBRecovery '''
-	recovery = PCFTRecovery(HOSTS, environment, training = False)
+	recovery = Recovery()
 
 	# Initialize Stats
 	stats = Stats(workload, datacenter, scheduler)
@@ -188,6 +188,16 @@ def saveStats(stats, datacenter, workload, env, end=True):
 	if os.path.exists(dirname): shutil.rmtree(dirname, ignore_errors=True)
 	os.mkdir(dirname)
 	stats.generateDatasets(dirname)
+	
+	# 保存故障历史记录（如果存在）
+	if hasattr(env, 'get_fault_history'):
+		fault_history = env.get_fault_history()
+		fault_history_path = os.path.join(dirname, 'fault_history.pkl')
+		with open(fault_history_path, 'wb') as f:
+			pickle.dump(fault_history, f)
+		print(f"[故障历史] 已保存到: {fault_history_path}")
+		print(f"[故障历史] 总interval数: {len(fault_history)}, 有故障的interval数: {sum(1 for f in fault_history.values() if len(f) > 0)}")
+	
 	if 'Datacenter' in datacenter.__class__.__name__:
 		saved_env, saved_workload, saved_datacenter, saved_scheduler, saved_sim_scheduler = stats.env, stats.workload, stats.datacenter, stats.scheduler, stats.simulated_scheduler
 		stats.env, stats.workload, stats.datacenter, stats.scheduler, stats.simulated_scheduler = None, None, None, None, None

@@ -29,8 +29,13 @@ def custom_loss(model, source, target_anomaly, target_class):
 	nz, no = 0, 0
 	source_anomaly, source_prototype = source
 	aloss, tloss = 0, torch.tensor(0, dtype=torch.double)
+	# 使用固定权重替代动态权重，更好地处理类别不平衡
+	# 极高权重以提升精确度（目标：50%）
+	# 分析发现：Percentile=90是最优阈值，配合极高权重（100）来达到50%目标
+	ANOMALY_WEIGHT = 100  # 异常样本权重（从50增加到100，极高权重，配合Percentile=90最优阈值）
 	for i, sa in enumerate(source_anomaly):
-		multiplier = 1 if target_anomaly[i] == 0 else num_zero / num_ones
+		# 固定权重：正常样本权重1，异常样本权重10
+		multiplier = 1 if target_anomaly[i] == 0 else ANOMALY_WEIGHT
 		nz += 1 if target_anomaly[i] == 0 else 1; no += 1 if target_anomaly[i] == 1 else 0
 		aloss += anomaly_loss(sa,  torch.tensor([target_anomaly[i]], dtype=torch.long)) * multiplier
 	for i, sp in enumerate(source_prototype):
@@ -104,9 +109,26 @@ def accuracy(model, train_time_data, train_schedule_data, anomaly_data, class_da
 			class_total += 1
 			class_correct += class_accuracy(source_prototype, anomaly_data[i], class_data[i], model, model_plotter)
 	tp, fp, tn, fn = np.mean(tpl), np.mean(fpl), np.mean(tnl), np.mean(fn)
-	p, r = tp/(tp+fp), tp/(tp+fn)
-	tqdm.write(f'P = {p}, R = {r}, F1 = {2 * p * r / (p + r)}')
-	return anomaly_correct / len(train_time_data), class_correct / class_total
+	# 避免除零错误
+	if tp + fp > 0:
+		p = tp / (tp + fp)
+	else:
+		p = 0.0
+	if tp + fn > 0:
+		r = tp / (tp + fn)
+	else:
+		r = 0.0
+	if p + r > 0:
+		f1 = 2 * p * r / (p + r)
+	else:
+		f1 = 0.0
+	tqdm.write(f'P = {p}, R = {r}, F1 = {f1}')
+	# 避免除零错误
+	if class_total > 0:
+		class_score = class_correct / class_total
+	else:
+		class_score = 0.0
+	return anomaly_correct / len(train_time_data), class_score
 
 # Multi-task GAN Training Function
 def train_gan_multitask(gen, disc, gopt, dopt, embedding, schedule_data, env, ganloss, 

@@ -1,4 +1,0 @@
-method,run_dir,intervals,trigger_rate,avg_pred_anom_nodes,precision,recall,f1,notes
-PreGAN,/home/user/workspace/PreGANPlus/final_results/data/PreGAN/run_002/RPiEdge_BWGD2_100_16_16_1000_10000_300_5,100,1.000000,8.720000,0.038991,0.653846,0.073593,evaluated last 100 of 102 intervals
-PreGANPlus,/home/user/workspace/PreGANPlus/final_results/data/PreGANPlus/run_006/RPiEdge_BWGD2_100_16_16_1000_10000_300_5,100,1.000000,16.000000,0.031250,1.000000,0.060606,evaluated last 100 of 102 intervals
-PreGANPlusEnhanced,/home/user/workspace/PreGANPlus/final_results/data/PreGANPlusEnhanced/run_002/RPiEdge_BWGD2_100_16_16_1000_10000_300_5,100,1.000000,16.000000,0.035625,1.000000,0.068799,evaluated last 100 of 102 intervals

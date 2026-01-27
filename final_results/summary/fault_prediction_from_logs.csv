@@ -1,8 +1,0 @@
-method,log_file,intervals,triggered_intervals,trigger_rate,mean_anomaly_sum,mean_P,mean_R,mean_F1,notes
-CMODLB,CMODLB/run_004_20260113_085529.log,100,0,0.0,,,,,no anomaly_sum in log; no P/R/F1 in log
-DFTM,DFTM/run_001_20260112_162146.log,100,0,0.0,,,,,no anomaly_sum in log; no P/R/F1 in log
-ECLB,ECLB/run_003_20260113_091254.log,100,0,0.0,,,,,no anomaly_sum in log; no P/R/F1 in log
-PCFT,PCFT/run_002_20260113_091934.log,100,0,0.0,,,,,no anomaly_sum in log; no P/R/F1 in log
-PreGAN,PreGAN/run_002_20260112_163846.log,100,100,1.0,8.29,0.09136244225729413,0.3491790258691035,0.13634035061093452,
-PreGANPlus,PreGANPlus/run_006_20260113_082751.log,100,100,1.0,13.85,,,,no P/R/F1 in log
-PreGANPlusEnhanced,PreGANPlusEnhanced/run_002_20260113_083811.log,100,0,0.0,,,,,no anomaly_sum in log; no P/R/F1 in log
