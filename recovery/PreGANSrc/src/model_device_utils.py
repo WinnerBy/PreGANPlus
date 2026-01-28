@@ -106,7 +106,7 @@ def create_tensor_on_device(data, dtype=None, device_manager=None, use_dgl_devic
     target_device = device_manager.get_dgl_device() if use_dgl_device else device_manager.get_torch_device()
     
     if dtype is None:
-        dtype = torch.double
+        dtype = device_manager.get_dtype()  # 使用设备管理器推荐的dtype
     
     return torch.tensor(data, dtype=dtype, device=target_device)
 

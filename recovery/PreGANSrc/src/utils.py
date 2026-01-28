@@ -7,7 +7,7 @@ from .device_manager import get_device_manager
 
 def convert_to_windows(data, model):
 	# 获取推荐的dtype
-	dtype = get_device_manager().get_dtype() if hasattr(data, 'dtype') else torch.float64
+	dtype = get_device_manager().get_dtype() if hasattr(data, 'dtype') else torch.float32
 	data = torch.tensor(data, dtype=dtype)
 	windows = []; w_size = model.n_window
 	for i, g in enumerate(data): 
@@ -307,6 +307,28 @@ def load_dataset(folder, model):
 		anomaly_data, class_data = form_test_dataset(time_data_raw)
 		print(f"[数据加载] 未找到故障历史文件，使用统计方法生成标签")
 	
+	# 数据增强：重复异常样本以平衡类别（针对1.82%异常率）
+	from .constants import AUGMENT_ANOMALY_SAMPLES, AUGMENT_FACTOR
+	if AUGMENT_ANOMALY_SAMPLES:
+		# 找出所有异常样本的索引
+		anomaly_mask = anomaly_data.any(axis=1)  # [n_timesteps] bool数组
+		anomaly_indices = np.where(anomaly_mask)[0]
+		
+		if len(anomaly_indices) > 0:
+			# 重复异常样本
+			augmented_indices = []
+			for _ in range(AUGMENT_FACTOR - 1):  # -1因为原始数据已经有一份
+				augmented_indices.extend(anomaly_indices)
+			
+			if len(augmented_indices) > 0:
+				# 复制异常样本并添加到数据集
+				time_data_raw = np.vstack([time_data_raw, time_data_raw[augmented_indices]])
+				anomaly_data = np.vstack([anomaly_data, anomaly_data[augmented_indices]])
+				class_data = np.vstack([class_data, class_data[augmented_indices]])
+				
+				print(f"[数据增强] 异常样本从 {len(anomaly_indices)} 增强到 {len(anomaly_indices) * AUGMENT_FACTOR}")
+				print(f"[数据增强] 总样本数: {len(time_data_raw)}, 异常率: {anomaly_data.any(axis=1).sum() / len(time_data_raw) * 100:.2f}%")
+	
 	# 然后归一化数据用于训练
 	time_data = normalize_time_data(time_data_raw)
 	dtype = get_device_manager().get_dtype()  # 获取兼容的dtype
@@ -351,16 +373,12 @@ def load_model(folder, fname, modelname):
 	optimizer = torch.optim.AdamW(model.parameters() , lr=model.lr, weight_decay=1e-5)
 	if os.path.exists(path):
 		print(f"{color.GREEN}Loading pre-trained model: {model.name}{color.ENDC}")
-		# 使用weights_only=False避免PyTorch 2.x的安全警告
-		# 同时指定map_location以确保加载到正确的设备
 		checkpoint = torch.load(path, map_location=torch_device, weights_only=False)
 		model.load_state_dict(checkpoint['model_state_dict'])
 		model.prototype = checkpoint['model_prototypes']
 		for i, p in enumerate(model.prototype):
 			p.requires_grad = False
-			# 将prototype移动到正确的设备
 			model.prototype[i] = p.to(torch_device)
-		# if 'Att' in model.name: print(model.prototype)
 		optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 		epoch = checkpoint['epoch']
 		accuracy_list = checkpoint['accuracy_list']

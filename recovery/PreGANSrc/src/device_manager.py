@@ -56,13 +56,11 @@ class DeviceManager:
             self.dgl_device = self.torch_device
             self.dgl_on_cpu = False
         
-        # 3. 推荐的数据类型（MPS不支持float64，需要使用float32）
-        if self.use_mps:
-            self.default_dtype = torch.float32
-            self.default_np_dtype = 'float32'
-        else:
-            self.default_dtype = torch.float64
-            self.default_np_dtype = 'float64'
+        # 3. 推荐的数据类型
+        # 统一使用float32以保持兼容性（MPS不支持float64）
+        # 即使在CPU上也使用float32，确保模型权重和数据类型一致
+        self.default_dtype = torch.float32
+        self.default_np_dtype = 'float32'
     
     def _print_device_info(self):
         """打印设备信息"""

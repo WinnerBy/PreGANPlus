@@ -14,6 +14,9 @@ from .PreGANSrc.src.train_multiobjective import train_gan_multiobjective
 from .PreGANSrc.src.device_manager import get_device_manager
 from .PreGANPlusEnhanced import PreGANPlusEnhancedRecovery
 
+# 为消融模型创建单独的checkpoint存储文件夹
+ablation_model_folder = os.path.join(os.path.dirname(__file__), 'ablation_models')
+
 
 class _GenWithCostWrapper(nn.Module):
     """Wrap a standard generator to return (schedule, predicted_cost=0)."""
@@ -47,7 +50,7 @@ class AblationNoTransformerRecovery(PreGANPlusEnhancedRecovery):
     Ablation: remove Transformer encoder, use FPE (GRU+GAT) encoder
     while keeping migration-aware generator + multi-objective discriminator.
     """
-    def __init__(self, hosts, env, training=False):
+    def __init__(self, hosts, env, training=False, encoder_only=False):
         Recovery.__init__(self)
         self.model_name = f'FPE_{hosts}'
         self.gen_name = f'Gen_{hosts}_MigrationAware_ablation_notrans'
@@ -55,6 +58,7 @@ class AblationNoTransformerRecovery(PreGANPlusEnhancedRecovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
+        self.encoder_only = encoder_only
         self.save_gan = True
 
         # Multi-objective training hyperparameters
@@ -76,18 +80,21 @@ class AblationNoTransformerRecovery(PreGANPlusEnhancedRecovery):
     def load_models(self):
         # Load encoder model (FPE)
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
-            load_model(model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+            load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
         if self.epoch == -1:
             self.train_model()
 
-        # Load enhanced GAN
-        self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
-            self.load_gan_enhanced(model_plus_folder,
-                                   f'{self.env_name}_{self.gen_name}.ckpt',
-                                   f'{self.env_name}_{self.disc_name}.ckpt',
-                                   self.gen_name, self.disc_name)
-        self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
-        self.ganloss = nn.BCELoss()
+        # 只在非encoder_only模式下加载GAN
+        if not self.encoder_only:
+            # Load enhanced GAN
+            self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
+                self.load_gan_enhanced(ablation_model_folder,
+                                       f'{self.env_name}_{self.gen_name}.ckpt',
+                                       f'{self.env_name}_{self.disc_name}.ckpt',
+                                       self.gen_name, self.disc_name)
+            self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
+            self.ganloss = nn.BCELoss()
+        
         self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
 
     def train_model(self):
@@ -102,7 +109,7 @@ class AblationNoTransformerRecovery(PreGANPlusEnhancedRecovery):
             tqdm.write(f'Epoch {self.epoch},\tFactor = {factor},\tAScore = {anomaly_score},\tCScore = {class_score}')
             self.accuracy_list.append((loss, factor, anomaly_score, class_score))
             self.model_plotter.plot(self.accuracy_list, self.epoch)
-            save_model(model_folder, f'{self.env_name}_{self.model_name}.ckpt',
+            save_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt',
                       self.model, self.optimizer, self.epoch, self.accuracy_list)
 
 
@@ -110,7 +117,7 @@ class AblationNoGATRecovery(PreGANPlusEnhancedRecovery):
     """
     Ablation: remove GAT, keep Transformer encoder and MAMO decision modules.
     """
-    def __init__(self, hosts, env, training=False):
+    def __init__(self, hosts, env, training=False, encoder_only=False):
         Recovery.__init__(self)
         self.model_name = f'TransformerNoGAT_{hosts}'
         self.gen_name = f'Gen_{hosts}_MigrationAware_ablation_nogat'
@@ -118,6 +125,7 @@ class AblationNoGATRecovery(PreGANPlusEnhancedRecovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
+        self.encoder_only = encoder_only
         self.save_gan = True
 
         # Multi-objective training hyperparameters
@@ -141,7 +149,7 @@ class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
     """
     Ablation: remove migration-aware generator, keep multi-objective discriminator.
     """
-    def __init__(self, hosts, env, training=False):
+    def __init__(self, hosts, env, training=False, encoder_only=False):
         Recovery.__init__(self)
         self.model_name = f'Transformer_{hosts}'
         self.gen_name = f'Gen_{hosts}_ablation_nomigaware'
@@ -149,6 +157,7 @@ class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
+        self.encoder_only = encoder_only
         self.save_gan = True
 
         # Multi-objective training hyperparameters
@@ -170,26 +179,29 @@ class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
     def load_models(self):
         # Load encoder model
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
-            load_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+            load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
         if self.epoch == -1:
             self.train_model()
 
-        # Load standard generator + multi-objective discriminator
-        gmodel, dmodel, gopt, dopt, epoch, accuracy_list = load_gan(
-            model_plus_folder,
-            f'{self.env_name}_{self.gen_name}.ckpt',
-            f'{self.env_name}_{self.disc_name}.ckpt',
-            f'Gen_{self.hosts}',
-            f'Disc_{self.hosts}_MultiObjective'
-        )
-        dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
-        self.gen = _GenWithCostWrapper(gmodel).to(dtype=dtype)
-        self.disc = dmodel
-        self.gopt, self.dopt = gopt, dopt
-        self.epoch, self.accuracy_list = epoch, accuracy_list
+        # 只在非encoder_only模式下加载GAN
+        if not self.encoder_only:
+            # Load standard generator + multi-objective discriminator
+            gmodel, dmodel, gopt, dopt, epoch, accuracy_list = load_gan(
+                ablation_model_folder,
+                f'{self.env_name}_{self.gen_name}.ckpt',
+                f'{self.env_name}_{self.disc_name}.ckpt',
+                f'Gen_{self.hosts}',
+                f'Disc_{self.hosts}_MultiObjective'
+            )
+            dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
+            self.gen = _GenWithCostWrapper(gmodel).to(dtype=dtype)
+            self.disc = dmodel
+            self.gopt, self.dopt = gopt, dopt
+            self.epoch, self.accuracy_list = epoch, accuracy_list
 
-        self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
-        self.ganloss = nn.BCELoss()
+            self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
+            self.ganloss = nn.BCELoss()
+        
         self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
 
 
@@ -197,7 +209,7 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
     """
     Ablation: remove multi-objective discriminator, keep migration-aware generator.
     """
-    def __init__(self, hosts, env, training=False):
+    def __init__(self, hosts, env, training=False, encoder_only=False):
         Recovery.__init__(self)
         self.model_name = f'Transformer_{hosts}'
         self.gen_name = f'Gen_{hosts}_MigrationAware_ablation_nomulti'
@@ -205,6 +217,7 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
+        self.encoder_only = encoder_only
         self.save_gan = True
 
         # Training weights (not used in standard GAN training)
@@ -226,28 +239,35 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
     def load_models(self):
         # Load encoder model
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
-            load_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+            load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
         if self.epoch == -1:
             self.train_model()
 
-        # Load migration-aware generator + standard discriminator
-        gmodel, dmodel, gopt, dopt, epoch, accuracy_list = load_gan(
-            model_plus_folder,
-            f'{self.env_name}_{self.gen_name}.ckpt',
-            f'{self.env_name}_{self.disc_name}.ckpt',
-            f'Gen_{self.hosts}_MigrationAware',
-            f'Disc_{self.hosts}'
-        )
-        self.gen = gmodel
-        self.disc = dmodel
-        self.gopt, self.dopt = gopt, dopt
-        self.epoch, self.accuracy_list = epoch, accuracy_list
+        # 只在非encoder_only模式下加载GAN
+        if not self.encoder_only:
+            # Load migration-aware generator + standard discriminator
+            gmodel, dmodel, gopt, dopt, epoch, accuracy_list = load_gan(
+                ablation_model_folder,
+                f'{self.env_name}_{self.gen_name}.ckpt',
+                f'{self.env_name}_{self.disc_name}.ckpt',
+                f'Gen_{self.hosts}_MigrationAware',
+                f'Disc_{self.hosts}'
+            )
+            self.gen = gmodel
+            self.disc = dmodel
+            self.gopt, self.dopt = gopt, dopt
+            self.epoch, self.accuracy_list = epoch, accuracy_list
 
-        self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
-        self.ganloss = nn.BCELoss()
+            self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
+            self.ganloss = nn.BCELoss()
+        
         self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
 
     def train_gan(self, embedding, schedule_data):
+        # encoder_only模式不训练GAN
+        if self.encoder_only:
+            return
+            
         # Train discriminator (standard BCE)
         self.disc.zero_grad()
         new_schedule_data, _ = self.gen(embedding, schedule_data)
@@ -270,12 +290,16 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
             self.accuracy_list.append((gen_loss.item(), disc_loss.item()))
             print(f'{color.HEADER}Epoch {self.epoch},\tGLoss = {gen_loss.item()},\tDLoss = {disc_loss.item()}{color.ENDC}')
             self.gan_plotter.plot(self.accuracy_list, self.epoch, new_score, orig_score)
-            save_gan(model_plus_folder,
+            save_gan(ablation_model_folder,
                     f'{self.env_name}_{self.gen_name}.ckpt',
                     f'{self.env_name}_{self.disc_name}.ckpt',
                     self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list)
 
     def recover_decision(self, embedding, schedule_data, original_decision):
+        # 如果是encoder_only模式，直接返回原始决策
+        if self.encoder_only:
+            return original_decision
+            
         # Generator returns (new_schedule, predicted_migration_cost)
         new_schedule_data, predicted_migration_cost = self.gen(embedding, schedule_data)
         probs = self.disc(schedule_data, new_schedule_data)

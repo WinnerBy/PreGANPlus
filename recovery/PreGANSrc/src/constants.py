@@ -7,15 +7,18 @@ data_filename = 'time_series.npy'
 schedule_filename = 'schedule_series.npy'
 
 # Hyperparameters
-num_epochs = 50
-PERCENTILES = 90  # 保留作为备选方法
+num_epochs = 100  # 从50增加到100，给模型更多学习时间
+PERCENTILES = 98  # 从95提高到98，极度严格（仅标记最上层2%）
 
 # 异常检测方法配置
-# 分析发现：Percentile=90方法表现最好（27.7%精确度），进一步降低（85）反而降低精确度
-# 为达到50%精确度目标，使用Percentile=90（最优阈值）+ 极高权重策略
-ANOMALY_DETECTION_METHOD = 'percentile'  # 可选: 'zscore', 'iqr', 'percentile', 'hybrid', 'multivariate', 'timeseries'
-PERCENTILES = 90  # 回到最优阈值（27.7%精确度），配合极高权重（100）来达到50%目标
-Z_SCORE_THRESHOLD = 1.8  # Z-score阈值（用于其他方法）
+# 改进：使用multivariate方法而非单维percentile
+# 原因：真实故障通常涉及多个维度（CPU+RAM）同时升高，multivariate更好地捕捉这一特征
+ANOMALY_DETECTION_METHOD = 'multivariate'  # 改为multivariate，更好处理多维异常
+Z_SCORE_THRESHOLD = 3.0  # 从2.0提高到3.0，更严格（仅标记3倍标准差之外）
+
+# 数据增强配置（针对类别不平衡）
+AUGMENT_ANOMALY_SAMPLES = True  # 启用异常样本增强
+AUGMENT_FACTOR = 3  # 将异常样本重复3次
 IQR_MULTIPLIER = 1.5  # IQR倍数，标准箱线图方法
 TIMESERIES_WINDOW_SIZE = 5  # 时间序列异常检测的窗口大小
 HYBRID_VOTING = 'or'  # 混合方法的投票策略: 'and' (更严格，精确度高但可能无异常) 或 'or' (更宽松，召回率高)

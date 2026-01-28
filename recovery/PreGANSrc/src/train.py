@@ -29,20 +29,34 @@ def custom_loss(model, source, target_anomaly, target_class):
 	global PROTO_UPDATE_FACTOR, num_ones, num_zero
 	nz, no = 0, 0
 	source_anomaly, source_prototype = source
-	aloss, tloss = 0, torch.tensor(0, dtype=torch.double)
-	# 使用固定权重替代动态权重，更好地处理类别不平衡
-	# 极高权重以提升精确度（目标：50%）
-	# 分析发现：Percentile=90是最优阈值，配合极高权重（100）来达到50%目标
-	ANOMALY_WEIGHT = 100  # 异常样本权重（从50增加到100，极高权重，配合Percentile=90最优阈值）
+	aloss, tloss = 0, torch.tensor(0, dtype=torch.float32)
+	# 处理极度类别不平衡（异常率1.82%）的策略：
+	# 1. 降低权重到10（避免过度敏感导致虚警）
+	# 2. 使用Focal Loss（gamma=2）提升难分样本的权重
+	# 3. 目标：提升精准率到70%+
+	ANOMALY_WEIGHT = 10  # 从30进一步降到10，大幅减少误报
+	FOCAL_GAMMA = 2.0  # Focal Loss参数，增强对难分样本的关注
+	
 	for i, sa in enumerate(source_anomaly):
-		# 固定权重：正常样本权重1，异常样本权重10
-		multiplier = 1 if target_anomaly[i] == 0 else ANOMALY_WEIGHT
-		nz += 1 if target_anomaly[i] == 0 else 1; no += 1 if target_anomaly[i] == 1 else 0
-		aloss += anomaly_loss(sa,  torch.tensor([target_anomaly[i]], dtype=torch.long)) * multiplier
+		# 计算基础损失
+		base_loss = anomaly_loss(sa, torch.tensor([target_anomaly[i]], dtype=torch.long))
+		
+		# Focal Loss: 降低易分样本的权重，增加难分样本的权重
+		# pt = 模型预测正确的概率
+		pt = torch.exp(-base_loss)
+		focal_weight = (1 - pt) ** FOCAL_GAMMA
+		
+		# 组合Focal Loss和类别权重
+		multiplier = focal_weight.item() * (1 if target_anomaly[i] == 0 else ANOMALY_WEIGHT)
+		nz += 1 if target_anomaly[i] == 0 else 0
+		no += 1 if target_anomaly[i] == 1 else 0
+		aloss += base_loss * multiplier
 	for i, sp in enumerate(source_prototype):
 		if target_anomaly[i] > 0:
 			tloss += triplet_loss(sp, target_class[i], model)
-	PROTO_UPDATE_FACTOR *= PROTO_FACTOR_DECAY; num_zero += nz; num_ones += no;
+	PROTO_UPDATE_FACTOR *= PROTO_FACTOR_DECAY
+	num_zero += nz
+	num_ones += no
 	return aloss, tloss
 
 def backprop(epoch, model, train_time_data, train_schedule_data, anomaly_data, class_data, optimizer, training = True):
@@ -186,15 +200,15 @@ def train_gan_multitask(gen, disc, gopt, dopt, embedding, schedule_data, env, ga
     
     # Task 1: Classification loss (judge which is better)
     true_class = torch.tensor([0, 1] if new_score <= orig_score else [1, 0], 
-                              dtype=torch.double, device=class_probs.device)
+                              dtype=torch.float32, device=class_probs.device)
     class_loss = ganloss(class_probs, true_class)
     
     # Task 2: Regression loss (predict evaluation score)
-    score_target = torch.tensor([new_score], dtype=torch.double, device=score_pred.device)
+    score_target = torch.tensor([new_score], dtype=torch.float32, device=score_pred.device)
     score_loss = mse_loss(score_pred, score_target)
     
     # Task 3: Response time prediction loss (新增)
-    response_time_target = torch.tensor([new_response_time], dtype=torch.double, device=response_time_pred.device)
+    response_time_target = torch.tensor([new_response_time], dtype=torch.float32, device=response_time_pred.device)
     response_time_pred_loss = mse_loss(response_time_pred, response_time_target)
     
     # Multi-task loss (weighted combination)
@@ -211,21 +225,21 @@ def train_gan_multitask(gen, disc, gopt, dopt, embedding, schedule_data, env, ga
     
     # Generator loss: encourage discriminator to think new schedule is better
     # Method 1: Classification loss
-    target_better = torch.tensor([0, 1], dtype=torch.double, device=class_probs_gen.device)
+    target_better = torch.tensor([0, 1], dtype=torch.float32, device=class_probs_gen.device)
     gen_class_loss = ganloss(class_probs_gen, target_better)
     
     # Method 2: Regression loss (encourage predicting lower score)
-    score_upper_bound = torch.tensor([orig_score], dtype=torch.double, device=score_pred_gen.device)
+    score_upper_bound = torch.tensor([orig_score], dtype=torch.float32, device=score_pred_gen.device)
     gen_score_loss = torch.relu(score_pred_gen - score_upper_bound + 0.1)
     
     # Method 3: Response time constraint loss (新增，关键优化)
     # Penalize if predicted response time exceeds SLA threshold
-    sla_threshold_tensor = torch.tensor([sla_threshold], dtype=torch.double, device=response_time_pred_gen.device)
+    sla_threshold_tensor = torch.tensor([sla_threshold], dtype=torch.float32, device=response_time_pred_gen.device)
     response_time_excess = torch.relu(response_time_pred_gen - sla_threshold_tensor)
     gen_response_time_loss = response_time_weight * response_time_excess
     
     # Also penalize if actual response time is high (additional constraint)
-    actual_response_time_tensor = torch.tensor([new_response_time], dtype=torch.double, device=response_time_pred_gen.device)
+    actual_response_time_tensor = torch.tensor([new_response_time], dtype=torch.float32, device=response_time_pred_gen.device)
     actual_response_time_excess = torch.relu(actual_response_time_tensor - sla_threshold_tensor)
     gen_actual_response_time_loss = response_time_weight * 0.5 * actual_response_time_excess
     

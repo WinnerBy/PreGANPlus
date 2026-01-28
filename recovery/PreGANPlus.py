@@ -10,7 +10,7 @@ from .PreGANSrc.src.train import *
 from .PreGANSrc.src.device_manager import get_device_manager
 
 class PreGANPlusRecovery(Recovery):
-    def __init__(self, hosts, env, training = False):
+    def __init__(self, hosts, env, training = False, encoder_only = False):
         super().__init__()
         self.model_name = f'Transformer_{hosts}'
         self.gen_name = f'Gen_{hosts}'
@@ -18,6 +18,7 @@ class PreGANPlusRecovery(Recovery):
         self.hosts = hosts
         self.env_name = 'simulator' if env == '' else 'framework'
         self.training = training
+        self.encoder_only = encoder_only
         self.save_gan = True
         
         # 初始化设备管理器
@@ -43,16 +44,19 @@ class PreGANPlusRecovery(Recovery):
         # Train the model if not trained (offline training same as PreGAN)
         if self.epoch == -1: self.train_model()
         
-        # Load generator and discriminator - 放在GPU上
-        self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
-            load_gan(model_plus_folder, f'{self.env_name}_{self.gen_name}.ckpt', f'{self.env_name}_{self.disc_name}.ckpt', self.gen_name, self.disc_name)
-        # 将GAN模型移到GPU设备
-        self.gen = self.gen.to(self.gan_device)
-        self.disc = self.disc.to(self.gan_device)
+        # 只在非encoder_only模式下加载GAN
+        if not self.encoder_only:
+            # Load generator and discriminator - 放在GPU上
+            self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
+                load_gan(model_plus_folder, f'{self.env_name}_{self.gen_name}.ckpt', f'{self.env_name}_{self.disc_name}.ckpt', self.gen_name, self.disc_name)
+            # 将GAN模型移到GPU设备
+            self.gen = self.gen.to(self.gan_device)
+            self.disc = self.disc.to(self.gan_device)
+            
+            self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
+            # GAN is always tuned
+            self.ganloss = nn.BCELoss()
         
-        self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
-        # GAN is always tuned
-        self.ganloss = nn.BCELoss()
         self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
 
     def train_model(self):
@@ -77,6 +81,10 @@ class PreGANPlusRecovery(Recovery):
         self.accuracy_list.append((loss, factor, anomaly_score, class_score))
 
     def train_gan(self, embedding, schedule_data):
+        # encoder_only模式不训练GAN
+        if self.encoder_only:
+            return
+            
         # 将数据移到GAN设备（GPU）
         embedding = embedding.to(self.gan_device)
         schedule_data = schedule_data.to(self.gan_device)
@@ -104,6 +112,10 @@ class PreGANPlusRecovery(Recovery):
                     self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list)
 
     def recover_decision(self, embedding, schedule_data, original_decision):
+        # 如果是encoder_only模式，直接返回原始决策
+        if self.encoder_only:
+            return original_decision
+            
         # 将数据移到GAN设备
         embedding = embedding.to(self.gan_device)
         schedule_data = schedule_data.to(self.gan_device)
@@ -155,7 +167,8 @@ class PreGANPlusRecovery(Recovery):
 
     def run_model(self, time_series, original_decision):
         # Run encoder (在CPU上)
-        schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=torch.double, device=self.encoder_device)
+        dtype = self.device_manager.get_dtype()  # 获取兼容的dtype
+        schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=dtype, device=self.encoder_device)
         anomaly, prototype = self.run_encoder(schedule_data)
         # If no anomaly predicted, return original decision 
         anomaly_detected = False
@@ -163,12 +176,19 @@ class PreGANPlusRecovery(Recovery):
             prediction = torch.argmax(a).item() 
             if prediction == 1: 
                 anomaly_detected = True
-                self.gan_plotter.update_anomaly_detected(1)
+                if not self.encoder_only:
+                    self.gan_plotter.update_anomaly_detected(1)
                 break
         if not anomaly_detected:
             print(f'[DEBUG PreGANPlus] No anomaly detected, returning original_decision')
-            self.gan_plotter.update_anomaly_detected(0)
+            if not self.encoder_only:
+                self.gan_plotter.update_anomaly_detected(0)
             return original_decision
+        
+        # encoder_only模式：检测到异常后直接返回原始决策
+        if self.encoder_only:
+            return original_decision
+            
         print(f'[DEBUG PreGANPlus] Anomaly detected, proceeding with GAN')
         # Form prototype vectors for diagnosed hosts
         embedding = [torch.zeros_like(p) if torch.argmax(anomaly[i]).item() == 0 else p for i, p in enumerate(prototype)]

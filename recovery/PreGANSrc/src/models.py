@@ -60,14 +60,14 @@ class FPE_16(nn.Module):
             nn.Linear(self.n_latent, PROTO_DIM), 
             nn.Sigmoid(),
         )
-        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.double) for _ in range(3)]
+        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.float32) for _ in range(3)]
 
     def encode(self, t, s):
         # 输入t形状：[3, 48]（3个时间步，16主机×3特征）
         t_batch = t.unsqueeze(1)  # [3, 1, 48]（添加batch维度）
         
         # GRU处理：输出[3, 1, 3]（3时间步，1 batch，3特征）
-        h0 = torch.randn(1, 1, self.n_window, dtype=torch.double, device=t.device)
+        h0 = torch.randn(1, 1, self.n_window, dtype=torch.float32, device=t.device)
         gru_out, _ = self.gru(t_batch, h0)
         
         # GAT处理
@@ -177,10 +177,10 @@ class FPE_50(nn.Module):
         self.prototype_decoder = nn.Sequential(
             nn.Linear(self.n_latent, PROTO_DIM), nn.Sigmoid(),
         )
-        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.double) for _ in range(3)]
+        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.float32) for _ in range(3)]
 
     def encode(self, t, s):
-        h = torch.randn(1, self.n_window, dtype=torch.double)
+        h = torch.randn(1, self.n_window, dtype=torch.float32)
         gru_t, _ = self.gru(torch.t(t), h)
         gru_t = torch.t(gru_t)
         graph = torch.cat((t, torch.zeros(self.n_window, 1)), dim=1)
@@ -230,7 +230,7 @@ class Attention_50(nn.Module):
         self.prototype_decoder = nn.Sequential(
             nn.Linear(self.n_latent, PROTO_DIM), nn.Sigmoid(),
         )
-        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.double) for _ in range(3)]
+        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.float32) for _ in range(3)]
 
     def encode(self, t, s):
         t = self.encoder(t.view(-1)).view(self.n_hosts, self.n_latent)	
@@ -370,7 +370,7 @@ class Transformer_16(nn.Module):
         )
 
         # 原型初始化
-        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.double) 
+        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.float32) 
                          for _ in range(self.n_hosts)]
 
     def encode(self, t, s):
@@ -454,7 +454,7 @@ class TransformerNoGAT_16(nn.Module):
             nn.Unflatten(1, (self.n_hosts, PROTO_DIM))
         )
 
-        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.double)
+        self.prototype = [torch.rand(PROTO_DIM, requires_grad=False, dtype=torch.float32)
                          for _ in range(self.n_hosts)]
 
     def encode(self, t, s):

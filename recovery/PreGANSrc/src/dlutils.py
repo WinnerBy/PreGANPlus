@@ -350,7 +350,7 @@ class GATHead(nn.Module):
         # 7. 消息传递与聚合
         self.g.ndata['z'] = z  # 节点特征赋值，16节点对应16个特征
         self.g.update_all(
-            dgl.function.src_mul_edge('z', 'a', 'm'),  # 源节点特征 × 边注意力分数
+            dgl.function.u_mul_e('z', 'a', 'm'),  # 源节点特征 × 边注意力分数
             dgl.function.sum('m', 'h')  # 聚合到目标节点
         )
         
