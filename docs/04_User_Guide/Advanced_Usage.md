@@ -46,17 +46,16 @@
 
 ### 新增文件
 
-1. `recovery/PreGANPlusEnhanced.py` - MAMO-GAN的Recovery类
+1. `recovery/PreGANPlusEnhanced.py` - MAMO-GAN 的 Recovery 类
 2. `recovery/PreGANSrc/src/train_multiobjective.py` - 多目标训练函数
-3. `scripts/test_mamo_gan.py` - MAMO-GAN测试脚本
+3. `recovery/Ablation.py` - 四种消融模型（NoTransformer、NoGAT、NoMigrationAware、NoMultiObjective）
 
 ### 修改的文件
 
-1. `recovery/PreGANSrc/src/models.py` - 添加了Gen_16_MigrationAware和Disc_16_MultiObjective
-2. `recovery/PreGANSrc/src/plotter.py` - 修复了样式问题和模型名称解析
-3. `main.py` - 添加了导入和注释
-4. `scripts/batch_run_experiments.py` - 添加了PreGANPlusEnhanced映射
-5. `grapher.py` - 添加了PreGANPlusEnhanced到Models列表
+1. `recovery/PreGANSrc/src/models.py` - 添加 Gen_16_MigrationAware、Disc_16_MultiObjective、TransformerNoGAT_16 等
+2. `recovery/PreGANSrc/src/plotter.py` - 修复 MPS/tensor 转 numpy 等设备兼容
+3. `main.py` - 添加 PreGANPlusEnhanced、Ablation 等 Recovery 导入与选择
+4. 实验脚本为 `scripts/stage1_data_generation.py`、`stage2_model_training.py`、`stage3_inference_testing.py`（见 [scripts/README.md](../../scripts/README.md)）
 
 ---
 

@@ -1,6 +1,6 @@
 Thesis drafts for the PreGANPlus project.
 
-This folder contains chapter-level markdown files to draft the master's thesis based on `docs/Paper_Architecture.md`.
+This folder contains chapter-level markdown files to draft the master's thesis. Method and experiment details are in `docs/01_Methods/`, `docs/02_Experiments/`, and `docs/03_Results/`.
 
 Files (chapter drafts):
 - `01_Introduction.md`        : Chapter 1 draft (绪论)

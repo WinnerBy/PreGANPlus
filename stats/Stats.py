@@ -227,6 +227,15 @@ class Stats():
 			res[metric] = sum(metric_with_interval)
 			print("Summation ", metric, " = ", res[metric])
 		print('Average energy (sum energy interval / sum numdestroyed) = ', res['energytotalinterval']/res['numdestroyed'])
+		# 总创建容器数（600 步 × 每步约 NEW_CONTAINERS，用于正确计算「相对全体创建」的 SLO 违反率）
+		total_containers_created = sum(self.workloadinfo[i]['newcontainers'] for i in range(len(self.workloadinfo))) if self.workloadinfo else 0
+		print("Total containers created (sum newcontainers) = ", total_containers_created)
+		# 整体 SLO 违反率：两种口径
+		if res['numdestroyed'] > 0:
+			print("Overall SLA violation rate (slaviolations/numdestroyed, among completed) = ", round(res['slaviolations']/res['numdestroyed']*100, 2), "%")
+		if total_containers_created > 0:
+			print("Overall SLA violation rate (slaviolations/total_created, among all created) = ", round(res['slaviolations']/total_containers_created*100, 2), "%")
+		print("(Note: Summation slaviolationspercentage is the SUM of per-interval percentages, not the overall rate; do not use it as a percentage.)")
 		plt.tight_layout(pad=0)
 		plt.savefig(dirname + '/' + 'Metrics' + '.pdf')
 

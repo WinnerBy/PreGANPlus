@@ -166,17 +166,18 @@ Disc_16(
 
 #### 训练数据
 
-- **来源**: 阶段1收集的1000步数据
+- **来源**: 阶段1收集的数据（当前推荐配置：400 步×8 容器，见 [Stage1_Data_And_Analysis](../02_Experiments/Stage1_Data_And_Analysis.md)）
 - **格式**: 
-  - `time_series.npy`: [1001, 48] - 时间序列数据
-  - `schedule_series.npy`: [1001, 16, 16] - 调度序列数据
+  - `time_series.npy`: [timesteps, 48] - 时间序列数据（16 主机×3 指标）
+  - `schedule_series.npy`: [timesteps, 16, 16] - 调度序列数据
+  - `fault_history.pkl`: ADE 故障标签（与 Stage1 一致）
 
 #### 训练参数
 
-- **Epochs**: 50
-- **学习率**: 0.0001
+- **Epochs**: 300（`recovery/PreGANSrc/src/constants.py` 中 `num_epochs = 300`）
+- **学习率**: 默认（constants 与优化器）
 - **优化器**: Adam
-- **损失函数**: 根据编码器类型（异常检测损失 + 原型向量损失）
+- **损失函数**: 异常检测损失 + 原型向量（triplet）损失
 
 #### 训练流程
 
@@ -195,8 +196,8 @@ Disc_16(
 6. **保存checkpoint**: 每10个epoch保存一次到 `recovery/PreGANSrc/checkpoints/simulator_FPE_16.ckpt`
 
 **训练参数**:
-- Epochs: 50（在 `constants.py` 中定义）
-- 学习率: 0.0001
+- Epochs: 300（在 `constants.py` 中 `num_epochs = 300`）
+- 学习率: 默认
 - 优化器: Adam
 - 损失函数: 异常检测损失 + 原型向量损失
 
@@ -292,17 +293,16 @@ Disc_16(
 
 ---
 
-## 📊 与TF-GAN的对比
+## 📊 与 TF-GAN 的对比
 
 | 方面 | FPE-GAN | TF-GAN | 差异 |
 |------|---------|--------|------|
-| 编码器 | FPE_16 | Transformer_16 | Transformer更强的序列建模能力 |
+| 编码器 | FPE_16 | Transformer_16 | Transformer 更强的序列建模能力 |
 | Generator | Gen_16 | Gen_16 | 相同 |
 | Discriminator | Disc_16 | Disc_16 | 相同 |
-| 训练机制 | 离线训练 | 在线调优 | TF-GAN有在线调优 |
-| 能耗 | 1983.40 kWh | 1983.01 kWh | TF-GAN略优 |
-| 响应时间 | 214.02 s | 240.42 s | FPE-GAN更好 |
-| 迁移次数 | 165 | 157 | TF-GAN略少 |
+| 训练机制 | 离线训练 | 离线+在线调优 | TF-GAN 有在线调优 |
+
+**当前实验数值**（Stage3 挑选 5 次，600 步×10 容器）见 [Stage3_Results_Analysis](../03_Results/Stage3_Results_Analysis.md)；上表为历史单次运行参考，以 Stage3 文档为准。
 
 ---
 

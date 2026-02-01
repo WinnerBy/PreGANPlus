@@ -1,6 +1,6 @@
 # 用户指南
 
-**创建日期**: 2026-01-14
+**最后更新**: 2026-01
 
 ---
 
@@ -34,8 +34,8 @@
 
 如果您想运行实验：
 1. [快速开始](Quick_Start.md) - 快速运行实验
-2. [实验流程说明](../02_Experiments/Experimental_Workflow.md) - 详细流程
-3. [实验参数配置](../02_Experiments/Experimental_Configuration.md) - 参数说明
+2. [实验设置与故障设计](../02_Experiments/Experiment_Setup_And_Fault_Design.md) - 环境与配置
+3. [Stage1 数据与分析](../02_Experiments/Stage1_Data_And_Analysis.md)、[Stage2 训练与分析](../02_Experiments/Stage2_Training_And_Analysis.md) - 数据与训练流程
 
 ---
 
@@ -47,4 +47,4 @@
 
 ---
 
-**最后更新**: 2026-01-14
+**最后更新**: 2026-01

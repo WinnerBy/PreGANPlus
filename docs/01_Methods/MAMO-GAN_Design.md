@@ -49,8 +49,8 @@ MAMO-GAN使用与TF-GAN相同的Transformer编码器：
   - 相比FPE编码器，具有更强的序列建模能力
 
 **编码器训练**:
-- 使用阶段1收集的1000步数据进行离线训练
-- 训练50个epoch
+- 与 TF-GAN 共用 Transformer_16，使用阶段1数据离线训练（当前推荐 400×8，见 [Stage1_Data_And_Analysis](../02_Experiments/Stage1_Data_And_Analysis.md)）
+- Epochs 由 `constants.py` 的 `num_epochs` 决定（当前 300）；实践中常与 PreGANPlus 共用一次 encoder-only 训练（如 150 epoch）
 - 训练完成后冻结编码器参数
 
 ---
@@ -341,16 +341,16 @@ gen_loss = gen_class_loss +
 
 #### 训练流程
 
-1. **阶段2**: 编码器训练（与TF-GAN相同）
-   - 使用阶段1收集的1000步数据
-   - 离线训练50个epoch
+1. **阶段2**: 编码器训练（与 TF-GAN 共用 Transformer_16）
+   - 使用阶段1数据离线训练（当前 400×8）
+   - Epochs 由 constants 决定（当前 300）
    - 训练完成后冻结
 
-2. **阶段3**: GAN训练
-   - 运行1200步模拟
-   - 每个间隔进行在线GAN训练
-   - 同时进行编码器调优（tune_model）
-   - 保存checkpoint
+2. **阶段2（GAN 部分）**: GAN 训练
+   - 运行 1200 步模拟（当前配置，见 [Experiment_Setup_And_Fault_Design](../02_Experiments/Experiment_Setup_And_Fault_Design.md)）
+   - 每步 8 容器，每个间隔进行在线 GAN 训练
+   - 可选编码器调优（tune_model）
+   - 保存 checkpoint
 
 ---
 
@@ -492,18 +492,16 @@ gen_migration_cost_loss = migration_cost_weight * (excess^3 + excess^2 + excess)
 
 ---
 
-## 📊 与TF-GAN的对比
+## 📊 与 TF-GAN 的对比
 
 | 方面 | TF-GAN | MAMO-GAN | 改进 |
 |------|--------|----------|------|
-| Generator | 标准Generator | Migration-Aware Generator | ✅ 迁移感知 |
-| Discriminator | 标准Discriminator | Multi-Objective Discriminator | ✅ 多目标优化 |
+| Generator | 标准 Generator | Migration-Aware Generator | ✅ 迁移感知 |
+| Discriminator | 标准 Discriminator | Multi-Objective Discriminator | ✅ 多目标优化 |
 | 训练目标 | 单一（能量） | 多目标（能量+响应时间+迁移成本） | ✅ 平衡优化 |
 | 迁移控制 | 无 | 多层控制机制 | ✅ 迁移控制 |
-| 能耗 | 1983.01 kWh | 1959.52 kWh | ✅ -1.18% |
-| 响应时间 | 240.42 s | 219.63 s | ✅ -8.65% |
-| 迁移次数 | 157 | 173 | ⚠️ +10.19% |
-| SLA违规 | 113 | 95 | ✅ -15.93% |
+
+**当前实验数值**（Stage3 挑选 5 次，600 步×10 容器）见 [Stage3_Results_Analysis](../03_Results/Stage3_Results_Analysis.md)：PreGANPlusEnhanced 在迁移、能耗、稳定性上综合最优。
 
 ---
 

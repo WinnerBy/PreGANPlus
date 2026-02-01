@@ -1,6 +1,6 @@
 # 方法设计文档
 
-**创建日期**: 2026-01-14
+**最后更新**: 2026-01
 
 ---
 
@@ -117,12 +117,27 @@ MAMO-GAN (PreGANPlusEnhanced)
 
 ---
 
+## 🔬 消融模型（4 个）
+
+| 代码名称 | 说明 | 编码器 | GAN |
+|----------|------|--------|-----|
+| AblationNoTransformer | 去掉 Transformer，改用 FPE_16 | FPE_16 | 同 MAMO-GAN |
+| AblationNoGAT | 去掉 GAT，仅 Transformer | TransformerNoGAT_16 | 同 MAMO-GAN |
+| AblationNoMigrationAware | 去掉迁移感知 | Transformer_16 | Gen_16 / Disc_16 |
+| AblationNoMultiObjective | 去掉多目标判别器 | Transformer_16 | MigrationAware Gen / 标准 Disc |
+
+基准为 PreGANPlusEnhanced（MAMO-GAN）。实现见 `recovery/Ablation.py`。
+
+---
+
 ## 🔗 相关文档
 
 - [实验设计文档](../02_Experiments/README.md) - 实验配置和流程
 - [实验结果分析](../03_Results/README.md) - 性能对比和分析
 - [用户指南](../04_User_Guide/README.md) - 使用说明
+- [Stage2 训练与分析](../02_Experiments/Stage2_Training_And_Analysis.md) - 当前训练结果与消融
+- [Stage3 结果分析](../03_Results/Stage3_Results_Analysis.md) - 当前推理结果（挑选 5 次）
 
 ---
 
-**最后更新**: 2026-01-14
+**最后更新**: 2026-01

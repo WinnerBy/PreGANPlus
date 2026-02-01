@@ -9,11 +9,11 @@ dependencies:
   - pip
 
   # 2. 核心深度学习框架 (PyTorch 依然用 Conda 装，比较稳)
-  - pytorch::pytorch=2.2.2
+  - pytorch=2.2.2
   - torchvision
   
   # 3. 科学计算栈
-  - numpy
+  - numpy=1.26
   - pandas
   - scipy
   - scikit-learn

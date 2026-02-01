@@ -48,7 +48,7 @@ RECOVERY_MAP = {
     'CMODLB': 'CMODLBRecovery',
 }
 
-def modify_main_py_for_training(method, num_steps=1200, new_containers=5,
+def modify_main_py_for_training(method, num_steps=1200, new_containers=8,
                                  encoder_only=False):
     """修改main.py用于训练阶段"""
     print("=" * 70)
@@ -210,14 +210,16 @@ def main():
                        help='方法集合：gan(GAN方法), ablation(消融), traditional(传统), all(全部)')
     parser.add_argument('--steps', type=int, default=1200,
                        help='训练步数（默认1200）')
-    parser.add_argument('--new-containers', type=int, default=5,
-                       help='每步新增容器数（默认5）')
+    parser.add_argument('--new-containers', type=int, default=8,
+                       help='每步新增容器数（默认8）')
     parser.add_argument('--encoder-only', action='store_true',
                        help='仅训练编码器（不训练GAN）')
     parser.add_argument('--log-dir', default='experiment_logs/stage2',
                        help='日志目录（默认experiment_logs/stage2）')
     parser.add_argument('--config-only', action='store_true',
                        help='仅配置不运行')
+    parser.add_argument('-y', '--yes', action='store_true',
+                       help='失败后自动继续下一个方法（无人看管/批处理时使用，不提示）')
     
     args = parser.parse_args()
     
@@ -279,8 +281,15 @@ def main():
         if not success:
             print(f"❌ {method} 训练失败")
             all_success = False
-            if len(methods) > 1 and input("继续下一个？(y/n): ").lower() != 'y':
-                break
+            if len(methods) > 1:
+                if getattr(args, 'yes', False):
+                    print("(已启用 -y，自动继续下一个方法)")
+                else:
+                    try:
+                        if input("继续下一个？(y/n): ").lower() != 'y':
+                            break
+                    except EOFError:
+                        print("(非交互式，自动继续下一个方法)")
         else:
             print(f"✅ {method} 训练完成")
     

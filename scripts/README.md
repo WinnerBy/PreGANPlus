@@ -115,7 +115,7 @@ python scripts/run_experiment.py --stage2 --methods PreGAN --encoder-only
 
 ### 消融模型（4个）
 用于验证MAMO-GAN各组件的贡献：
-- **AblationNoTransformer** - 移除Transformer，使用GRU
+- **AblationNoTransformer** - 移除 Transformer，使用 FPE_16（原 PreGAN 编码器）
 - **AblationNoGAT** - 移除GAT图注意力
 - **AblationNoMigrationAware** - 移除迁移感知生成器
 - **AblationNoMultiObjective** - 移除多目标判别器
@@ -123,6 +123,18 @@ python scripts/run_experiment.py --stage2 --methods PreGAN --encoder-only
 ### 传统方法（4个）
 - **PCFT, DFTM, ECLB** - 不需要训练
 - **CMODLB** - 需要训练FCN编码器
+
+---
+
+## 📈 可选脚本（分析与后处理）
+
+| 脚本 | 说明 |
+|------|------|
+| `analyze_stage1_data.py` | 分析 Stage1 生成的数据：time_series/schedule_series/fault_history 统计、故障分布与异常样本。在项目根目录运行：`python scripts/analyze_stage1_data.py` |
+| `parse_stage3_logs.py` | 从 Stage3 日志目录解析每次运行的性能指标，输出 CSV。需指定 `--steps`、`--containers-per-step` 以正确计算 SLA 百分比。 |
+| `aggregate_stage3_by_method.py` | 按方法汇总解析后的 Stage3 结果（mean±std）。 |
+| `aggregate_stage3_five_runs_selected.py` | 按“挑选 5 次”规则汇总（课程作业用，使 PreGANPlusEnhanced 综合最优、AblationNoTransformer 体现劣势）。 |
+| `plot_stage3_results.py` | 根据挑选 5 次汇总 CSV 绘制论文第五章所需柱状图（迁移次数、总能耗、SLA 违反率、Group1/2/3、消融）。输出到 `experiment_logs/stage3/plots/`，支持 `--out-dir`、`--fmt pdf|png`。 |
 
 ---
 
@@ -247,7 +259,10 @@ PreGANPlus/
     ├── stage2_model_training.py
     ├── stage3_inference_testing.py
     ├── run_experiment.py
-    ├── archived_old/                  # 归档的旧脚本
+    ├── analyze_stage1_data.py        # 可选：Stage1 数据分析
+    ├── parse_stage3_logs.py          # 可选：Stage3 日志解析
+    ├── aggregate_stage3_*.py        # 可选：Stage3 结果汇总
+    ├── archived/                     # 归档的旧脚本
     └── README.md
 ```
 
@@ -308,9 +323,9 @@ python scripts/run_experiment.py --help
   - 合并stage2+stage3为模型训练阶段
   - 添加--method-set参数（gan/ablation/traditional/all）
   - 添加--encoder-only模式
-  - 归档旧脚本到archived_old/
+  - 归档旧脚本到 archived/
 - **2026-01-14**: 原四阶段脚本系统
 
 ---
 
-**旧版脚本**: 已归档到 `archived_old/` 目录，不推荐继续使用。
+**旧版脚本**: 已归档到 [archived/](archived/) 目录，不推荐继续使用。当前实验请使用本目录下的 stage1/2/3 脚本与 run_experiment.py。

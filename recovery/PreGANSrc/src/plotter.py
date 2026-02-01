@@ -18,8 +18,26 @@ plt.rcParams['figure.figsize'] = 6, 2
 
 os.makedirs(plot_folder, exist_ok=True)
 
+def _tensor_to_numpy_scalar(x):
+    """Convert a 0-dim or 1-element tensor to Python scalar; else to ndarray. Safe for MPS/CUDA."""
+    if not hasattr(x, 'cpu'):
+        return x
+    t = x.cpu().detach()
+    if t.numel() == 1:
+        return t.item()
+    return t.numpy()
+
+
 def smoother(y, box_pts=1):
-    box = np.ones(box_pts)/box_pts
+    # Convert torch tensor or list-of-tensors to numpy; handle MPS/CUDA devices
+    if hasattr(y, 'cpu'):
+        y = y.cpu().detach().numpy()
+    elif isinstance(y, (list, tuple)):
+        arr = [_tensor_to_numpy_scalar(e) for e in y]
+        y = np.array(arr)
+    else:
+        y = np.array(y)
+    box = np.ones(box_pts) / box_pts
     y_smooth = np.convolve(y, box, mode='same')
     return y_smooth
 
@@ -69,8 +87,17 @@ class Model_Plotter():
 		self.target_anomaly_scores = np.array(self.target_anomaly_scores)
 		self.plot_heatmap('Anomaly Scores', 'Prediction', 'Ground Truth', self.source_anomaly_scores, self.target_anomaly_scores)
 		X = [i[0].tolist() for i in self.protoypes]; Y = np.array([i[1] for i in self.protoypes])
-		x2d = self.tsne.fit_transform(np.array(X))
-		self.plot_tsne('Prototypes', x2d, Y)
+		n_samples = len(X)
+		# t-SNE 要求 perplexity < n_samples，样本少时跳过或使用更小 perplexity
+		if n_samples < 2:
+			pass  # 不绘制 t-SNE
+		else:
+			perplexity_eff = min(self.tsne.perplexity, n_samples - 1)
+			if perplexity_eff < 5:
+				perplexity_eff = max(1, n_samples - 1)  # 至少 1，最多 n_samples-1
+			tsne_use = TSNE(n_components=2, perplexity=perplexity_eff, n_iter=min(1000, 250 * n_samples))
+			x2d = tsne_use.fit_transform(np.array(X))
+			self.plot_tsne('Prototypes', x2d, Y)
 		self.init_params()
 
 	def plot1(self, name1, data1, smooth = True, xlabel='Epoch'):
@@ -149,8 +176,11 @@ class GAN_Plotter():
 		self.class_detected.append(detected)
 
 	def new_better(self, new_better):
-		self.new_score_better.append(new_better + 0)
-		if not new_better: 
+		# 保证为 Python 标量（避免 MPS/CUDA tensor 导致 smoother 中 np.array 报错）
+		val = _tensor_to_numpy_scalar(new_better) if hasattr(new_better, 'cpu') else (new_better + 0)
+		val = int(val) if val is not None else 0
+		self.new_score_better.append(val)
+		if not val: 
 			self.hosts_migrated.append([0] * int(self.gname.split('_')[1]))
 			self.migrating.append(0)
 
@@ -169,7 +199,9 @@ class GAN_Plotter():
 		self.epoch += 1
 		self.gloss_list = [i[0] for i in accuracy_list]
 		self.dloss_list = [i[1] for i in accuracy_list]
-		self.new_score_better.append((ns <= os) + 0)
+		ns_val = _tensor_to_numpy_scalar(ns) if hasattr(ns, 'cpu') else ns
+		os_val = _tensor_to_numpy_scalar(os) if hasattr(os, 'cpu') else os
+		self.new_score_better.append(int(ns_val <= os_val) if ns_val is not None and os_val is not None else 0)
 		self.plot2('Generator Loss', 'Discriminator Loss', self.gloss_list, self.dloss_list)
 		self.plot3('Generator Loss', 'Discriminator Loss', 'New Schedule Better', self.gloss_list, self.dloss_list, self.new_score_better)
 		self.plot1('New Score Better', self.new_score_better)

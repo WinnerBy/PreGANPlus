@@ -49,6 +49,8 @@ class PreGANPlusEnhancedRecovery(Recovery):
         self.max_migrations_per_step = 2      # Allow up to 2 per step for effective placement
         self.strict_migration_limit = 173     # Validated optimal: balances all metrics
         self.total_migrations = 0             # Counter for total migrations performed
+        # 保存目录：子类（消融）可设置 _save_folder 覆盖，使 ckpt 写入 ablation_models
+        self._save_folder = model_plus_folder
         
         self.load_models()
 
@@ -77,10 +79,12 @@ class PreGANPlusEnhancedRecovery(Recovery):
                                       f'{self.env_name}_{self.gen_name}.ckpt', 
                                       f'{self.env_name}_{self.disc_name}.ckpt', 
                                       self.gen_name, self.disc_name)
-            # 将GAN模型移到GPU设备
+            # 将GAN模型移到GPU设备，并同步优化器状态设备，避免 step() 时 mps/cpu 混用报错
             self.gen = self.gen.to(self.gan_device)
             self.disc = self.disc.to(self.gan_device)
-            
+            move_optimizer_state_to_device(self.gopt, self.gan_device)
+            move_optimizer_state_to_device(self.dopt, self.gan_device)
+
             self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
             # GAN is always tuned
             self.ganloss = nn.BCELoss()
@@ -132,7 +136,8 @@ class PreGANPlusEnhancedRecovery(Recovery):
             tqdm.write(f'Epoch {self.epoch},\tFactor = {factor},\tAScore = {anomaly_score},\tCScore = {class_score}')
             self.accuracy_list.append((loss, factor, anomaly_score, class_score))
             self.model_plotter.plot(self.accuracy_list, self.epoch)
-            save_model(model_plus_folder, f'{self.env_name}_{self.model_name}.ckpt', 
+            save_folder = getattr(self, '_save_folder', model_plus_folder)
+            save_model(save_folder, f'{self.env_name}_{self.model_name}.ckpt', 
                       self.model, self.optimizer, self.epoch, self.accuracy_list)
 
     def tune_model(self):
@@ -188,8 +193,12 @@ class PreGANPlusEnhancedRecovery(Recovery):
             # Use energy as score for plotting (can be adjusted)
             new_score = 0.8 * new_energy + 0.2 * new_response_time
             orig_score = 0.8 * orig_energy + 0.2 * orig_response_time
-            self.gan_plotter.plot(self.accuracy_list, self.epoch, new_score, orig_score)
-            save_gan(model_plus_folder, 
+            # Convert scores to scalars if they are tensors (for MPS compatibility)
+            new_score_scalar = new_score.item() if hasattr(new_score, 'item') else new_score
+            orig_score_scalar = orig_score.item() if hasattr(orig_score, 'item') else orig_score
+            self.gan_plotter.plot(self.accuracy_list, self.epoch, new_score_scalar, orig_score_scalar)
+            save_folder = getattr(self, '_save_folder', model_plus_folder)
+            save_gan(save_folder, 
                     f'{self.env_name}_{self.gen_name}.ckpt', 
                     f'{self.env_name}_{self.disc_name}.ckpt',
                     self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list)
@@ -295,17 +304,16 @@ class PreGANPlusEnhancedRecovery(Recovery):
         return list(decision_dict.items())
 
     def run_encoder(self, schedule_data):
-        """Run encoder (same as PreGANPlus)"""
-        # Get latest data from Stat
+        """Run encoder (same as PreGANPlus)：先归一化+窗口化得到 tensor，再 .to(device)"""
+        # Get latest data from Stat（numpy）
         time_data = self.env.stats.time_series
-        
-        # 确保数据在CPU上（编码器在CPU）
-        time_data = time_data.to(self.encoder_device)
-        schedule_data = schedule_data.to(self.encoder_device)
-        
+        time_data = normalize_test_time_data(time_data, self.train_time_data)
         if time_data.shape[0] >= self.model.n_window:
             time_data = time_data[-self.model.n_window:]
         time_data = convert_to_windows(time_data, self.model)[-1]
+        # 确保数据在编码器设备上（CPU）
+        time_data = time_data.to(self.encoder_device)
+        schedule_data = schedule_data.to(self.encoder_device)
         return self.model(time_data, schedule_data)
 
     def run_model(self, time_series, original_decision):
@@ -315,28 +323,69 @@ class PreGANPlusEnhancedRecovery(Recovery):
         schedule_data = torch.tensor(self.env.scheduler.result_cache, dtype=dtype, device=self.encoder_device)
         anomaly, prototype = self.run_encoder(schedule_data)
         
-        # If no anomaly predicted, return original decision
-        anomaly_detected = False
-        for a in anomaly:
-            prediction = torch.argmax(a).item()
-            if prediction == 1:
-                anomaly_detected = True
-                if not self.encoder_only:
-                    self.gan_plotter.update_anomaly_detected(1)
-                break
+        # 异常检测：使用相对排序而不是绝对阈值
+        # 编码器学到的是相对异常特征，找出异常概率最高的主机
+        # 编码器输出的已经是Softmax概率，格式为 [[prob_normal, prob_anomaly]]
+        
+        anomaly_probs = []
+        for i, a in enumerate(anomaly):
+            try:
+                # 编码器输出格式: [[prob_class0, prob_class1]]
+                # 提取异常类（类1）的概率
+                if len(a.shape) > 1:
+                    anomaly_prob = a[0][1].item()  # [[normal, anomaly]] 格式
+                else:
+                    anomaly_prob = a[1].item() if len(a) > 1 else 0.0  # [normal, anomaly] 格式
+            except Exception as e:
+                print(f'[DEBUG PreGANPlusEnhanced] Error parsing anomaly output for host {i}: {e}')
+                anomaly_prob = 0.0
+            anomaly_probs.append(anomaly_prob)
+        
+        # 调试：打印所有主机的异常分数
+        print(f'[DEBUG PreGANPlusEnhanced] All anomaly scores: {[f"{p:.3f}" for p in anomaly_probs]}')
+        
+        # 混合策略：绝对阈值 + 相对排序
+        # 1. 首先过滤出异常概率超过绝对阈值的主机（编码器认为可能异常）
+        ABSOLUTE_THRESHOLD = 0.3  # 异常概率至少要达到30%才考虑
+        candidate_indices = [i for i, p in enumerate(anomaly_probs) if p > ABSOLUTE_THRESHOLD]
+        
+        if len(candidate_indices) > 0:
+            # 2. 如果有超过阈值的主机，在这些候选中使用相对排序
+            candidate_probs = [anomaly_probs[i] for i in candidate_indices]
+            avg_candidate_prob = np.mean(candidate_probs)
+            # 选择异常概率高于候选组平均值的主机
+            anomaly_host_indices = [i for i in candidate_indices if anomaly_probs[i] > avg_candidate_prob]
+            # 如果候选组内没有超过平均的（都差不多），选择概率最高的
+            if len(anomaly_host_indices) == 0:
+                anomaly_host_indices = [candidate_indices[np.argmax(candidate_probs)]]
+            print(f'[DEBUG PreGANPlusEnhanced] Candidates > {ABSOLUTE_THRESHOLD}: {len(candidate_indices)}, avg: {avg_candidate_prob:.3f}')
+        else:
+            # 3. 如果没有主机超过绝对阈值，说明系统整体正常，不触发GAN
+            anomaly_host_indices = []
+            print(f'[DEBUG PreGANPlusEnhanced] No host exceeds absolute threshold {ABSOLUTE_THRESHOLD}')
+        
+        anomaly_detected = len(anomaly_host_indices) > 0
         
         if not anomaly_detected:
+            print(f'[DEBUG PreGANPlusEnhanced] No anomaly detected, returning original_decision')
             if not self.encoder_only:
                 self.gan_plotter.update_anomaly_detected(0)
             return original_decision
+        
+        print(f'[DEBUG PreGANPlusEnhanced] Anomaly detected in {len(anomaly_host_indices)} hosts (indices: {anomaly_host_indices}, scores: {[f"{anomaly_probs[i]:.3f}" for i in anomaly_host_indices]})')
+        self.gan_plotter.update_anomaly_detected(1)
         
         # encoder_only模式：检测到异常后直接返回原始决策
         if self.encoder_only:
             return original_decision
         
-        # Form prototype vectors for diagnosed hosts
-        embedding = [torch.zeros_like(p) if torch.argmax(anomaly[i]).item() == 0 else p 
-                    for i, p in enumerate(prototype)]
+        # Form prototype vectors for diagnosed hosts - 只为异常主机添加原型
+        embedding = []
+        for i, p in enumerate(prototype):
+            if i in anomaly_host_indices:
+                embedding.append(p)  # 异常主机使用实际原型
+            else:
+                embedding.append(torch.zeros_like(p))  # 正常主机使用零向量
         self.gan_plotter.update_class_detected(get_classes(embedding, self.model))
         embedding = torch.stack(embedding)
         

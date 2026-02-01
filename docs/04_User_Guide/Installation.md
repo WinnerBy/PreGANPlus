@@ -31,15 +31,17 @@
 
 ### 方法1: 使用Conda（推荐）
 
-#### 1. 创建Conda环境
+#### 1. 创建 Conda 环境
 
 ```bash
-# 创建名为pregan的conda环境
-conda create -n pregan python=3.9
+# 创建名为 pregan_env 的 conda 环境（与当前实验一致）
+conda create -n pregan_env python=3.9
 
 # 激活环境
-conda activate pregan
+conda activate pregan_env
 ```
+
+**注意**: 在 conda 环境下请使用 `python` 而非 `python3`，以使用该环境的解释器。
 
 #### 2. 安装PyTorch
 
@@ -143,9 +145,9 @@ PreGANPlus/
 
 ```bash
 # 激活环境
-conda activate pregan
+conda activate pregan_env
 
-# 测试导入
+# 测试导入（使用 python 而非 python3）
 python -c "
 import torch
 import numpy as np

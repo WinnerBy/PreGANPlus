@@ -108,15 +108,13 @@ TF-GAN使用与FPE-GAN相同的Generator和Discriminator：
 
 #### 训练数据
 
-- **来源**: 阶段1收集的1000步数据
-- **格式**: 
-  - `time_series.npy`: [1001, 48] - 时间序列数据
-  - `schedule_series.npy`: [1001, 16, 16] - 调度序列数据
+- **来源**: 阶段1收集的数据（当前推荐：400 步×8 容器，见 [Stage1_Data_And_Analysis](../02_Experiments/Stage1_Data_And_Analysis.md)）
+- **格式**: `time_series.npy`、`schedule_series.npy`、`fault_history.pkl`（ADE 标签）
 
 #### 训练参数
 
-- **Epochs**: 50
-- **学习率**: 默认（在constants.py中定义）
+- **Epochs**: 由 `constants.py` 的 `num_epochs` 决定（当前 300）；实践中可与 PreGANPlusEnhanced 共用编码器并单独做 encoder-only 训练（如 150 epoch）
+- **学习率**: 默认
 - **优化器**: Adam
 - **损失函数**: 异常检测损失 + 原型向量损失
 
@@ -211,17 +209,16 @@ TF-GAN使用与FPE-GAN相同的Generator和Discriminator：
 
 ---
 
-## 📊 与FPE-GAN的对比
+## 📊 与 FPE-GAN 的对比
 
 | 方面 | FPE-GAN | TF-GAN | 改进 |
 |------|---------|--------|------|
 | 编码器 | FPE_16 | Transformer_16 | ✅ 更强的序列建模能力 |
 | Generator | Gen_16 | Gen_16 | 相同 |
 | Discriminator | Disc_16 | Disc_16 | 相同 |
-| 训练机制 | 离线训练 | 在线调优 | ✅ 适应动态环境 |
-| 能耗 | 1983.40 kWh | 1983.01 kWh | ✅ 略优 |
-| 响应时间 | 214.02 s | 240.42 s | ❌ 更差 |
-| 迁移次数 | 165 | 157 | ✅ 略少 |
+| 训练机制 | 离线训练 | 离线+在线调优 | ✅ 适应动态环境 |
+
+**当前实验数值**见 [Stage3_Results_Analysis](../03_Results/Stage3_Results_Analysis.md)（挑选 5 次汇总）。
 
 ---
 

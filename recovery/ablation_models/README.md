@@ -2,7 +2,7 @@
 
 This directory stores checkpoint files for the four ablation studies:
 
-1. **AblationNoTransformer**: FPE encoder (GRU+GAT) instead of Transformer
+1. **AblationNoTransformer**: FPE_16 encoder (GRU+GAT, same as PreGAN) instead of Transformer
    - Files: `simulator_FPE_16.ckpt`, `simulator_Gen_16_MigrationAware_ablation_notrans.ckpt`, `simulator_Disc_16_MultiObjective_ablation_notrans.ckpt`
 
 2. **AblationNoGAT**: Transformer encoder without GAT module

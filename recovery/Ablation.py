@@ -75,12 +75,26 @@ class AblationNoTransformerRecovery(PreGANPlusEnhancedRecovery):
         self.strict_migration_limit = 173
         self.total_migrations = 0
 
+        # 编码器在 CPU 上，避免 MPS 与数据设备不一致
+        self.device_manager = get_device_manager(verbose=True)
+        self.encoder_device = torch.device('cpu')
+        self.gan_device = self.device_manager.get_torch_device()
+        # 消融统一保存到 ablation_models，供 PreGANPlusEnhanced 的 train_model/train_gan 使用
+        self._save_folder = ablation_model_folder
+
         self.load_models()
 
     def load_models(self):
         # Load encoder model (FPE)
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
             load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # 编码器放到 CPU，与 load_dataset 数据设备一致
+        self.model = self.model.to(self.encoder_device)
+        if hasattr(self.model, 'gat_graph') and self.model.gat_graph is not None:
+            self.model.gat_graph = self.model.gat_graph.to(self.device_manager.get_dgl_device())
+        if hasattr(self.model, 'prototype'):
+            for i in range(len(self.model.prototype)):
+                self.model.prototype[i] = self.model.prototype[i].to(self.encoder_device)
         if self.epoch == -1:
             self.train_model()
 
@@ -92,9 +106,13 @@ class AblationNoTransformerRecovery(PreGANPlusEnhancedRecovery):
                                        f'{self.env_name}_{self.gen_name}.ckpt',
                                        f'{self.env_name}_{self.disc_name}.ckpt',
                                        self.gen_name, self.disc_name)
+            self.gen = self.gen.to(self.gan_device)
+            self.disc = self.disc.to(self.gan_device)
+            move_optimizer_state_to_device(self.gopt, self.gan_device)
+            move_optimizer_state_to_device(self.dopt, self.gan_device)
             self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
             self.ganloss = nn.BCELoss()
-        
+
         self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
 
     def train_model(self):
@@ -142,7 +160,41 @@ class AblationNoGATRecovery(PreGANPlusEnhancedRecovery):
         self.strict_migration_limit = 173
         self.total_migrations = 0
 
+        # 与 PreGANPlusEnhanced 一致，否则 load_models 中 self.encoder_device 未定义
+        self.device_manager = get_device_manager(verbose=True)
+        self.encoder_device = torch.device('cpu')
+        self.gan_device = self.device_manager.get_torch_device()
+        self._save_folder = ablation_model_folder
+
         self.load_models()
+
+    def load_models(self):
+        # 从消融目录加载 TransformerNoGAT 编码器
+        self.model, self.optimizer, self.epoch, self.accuracy_list = \
+            load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        self.model = self.model.to(self.encoder_device)
+        if hasattr(self.model, 'gat_graph') and self.model.gat_graph is not None:
+            self.model.gat_graph = self.model.gat_graph.to(self.device_manager.get_dgl_device())
+        if hasattr(self.model, 'prototype'):
+            for i in range(len(self.model.prototype)):
+                self.model.prototype[i] = self.model.prototype[i].to(self.encoder_device)
+        if self.epoch == -1:
+            self.train_model()
+
+        if not self.encoder_only:
+            self.gen, self.disc, self.gopt, self.dopt, self.epoch, self.accuracy_list = \
+                self.load_gan_enhanced(ablation_model_folder,
+                                      f'{self.env_name}_{self.gen_name}.ckpt',
+                                      f'{self.env_name}_{self.disc_name}.ckpt',
+                                      self.gen_name, self.disc_name)
+            self.gen = self.gen.to(self.gan_device)
+            self.disc = self.disc.to(self.gan_device)
+            move_optimizer_state_to_device(self.gopt, self.gan_device)
+            move_optimizer_state_to_device(self.dopt, self.gan_device)
+            self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
+            self.ganloss = nn.BCELoss()
+
+        self.train_time_data = load_npyfile(os.path.join(data_folder, self.env_name), data_filename)
 
 
 class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
@@ -174,12 +226,25 @@ class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
         self.strict_migration_limit = 173
         self.total_migrations = 0
 
+        # 编码器在 CPU 上，避免 MPS "Placeholder storage has not been allocated" 等问题
+        self.device_manager = get_device_manager(verbose=True)
+        self.encoder_device = torch.device('cpu')
+        self.gan_device = self.device_manager.get_torch_device()
+        self._save_folder = ablation_model_folder
+
         self.load_models()
 
     def load_models(self):
         # Load encoder model
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
             load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # 编码器放到 CPU，与 PreGANPlusEnhanced 一致，避免 MPS GAT 报错
+        self.model = self.model.to(self.encoder_device)
+        if hasattr(self.model, 'gat_graph') and self.model.gat_graph is not None:
+            self.model.gat_graph = self.model.gat_graph.to(self.device_manager.get_dgl_device())
+        if hasattr(self.model, 'prototype'):
+            for i in range(len(self.model.prototype)):
+                self.model.prototype[i] = self.model.prototype[i].to(self.encoder_device)
         if self.epoch == -1:
             self.train_model()
 
@@ -198,6 +263,10 @@ class AblationNoMigrationAwareRecovery(PreGANPlusEnhancedRecovery):
             self.disc = dmodel
             self.gopt, self.dopt = gopt, dopt
             self.epoch, self.accuracy_list = epoch, accuracy_list
+            self.gen = self.gen.to(self.gan_device)
+            self.disc = self.disc.to(self.gan_device)
+            move_optimizer_state_to_device(self.gopt, self.gan_device)
+            move_optimizer_state_to_device(self.dopt, self.gan_device)
 
             self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
             self.ganloss = nn.BCELoss()
@@ -234,12 +303,25 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
         self.strict_migration_limit = 173
         self.total_migrations = 0
 
+        # 编码器在 CPU 上，避免 MPS "Placeholder storage has not been allocated" 等问题
+        self.device_manager = get_device_manager(verbose=True)
+        self.encoder_device = torch.device('cpu')
+        self.gan_device = self.device_manager.get_torch_device()
+        self._save_folder = ablation_model_folder
+
         self.load_models()
 
     def load_models(self):
         # Load encoder model
         self.model, self.optimizer, self.epoch, self.accuracy_list = \
             load_model(ablation_model_folder, f'{self.env_name}_{self.model_name}.ckpt', self.model_name)
+        # 编码器放到 CPU，与 PreGANPlusEnhanced 一致，避免 MPS GAT 报错
+        self.model = self.model.to(self.encoder_device)
+        if hasattr(self.model, 'gat_graph') and self.model.gat_graph is not None:
+            self.model.gat_graph = self.model.gat_graph.to(self.device_manager.get_dgl_device())
+        if hasattr(self.model, 'prototype'):
+            for i in range(len(self.model.prototype)):
+                self.model.prototype[i] = self.model.prototype[i].to(self.encoder_device)
         if self.epoch == -1:
             self.train_model()
 
@@ -257,6 +339,10 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
             self.disc = dmodel
             self.gopt, self.dopt = gopt, dopt
             self.epoch, self.accuracy_list = epoch, accuracy_list
+            self.gen = self.gen.to(self.gan_device)
+            self.disc = self.disc.to(self.gan_device)
+            move_optimizer_state_to_device(self.gopt, self.gan_device)
+            move_optimizer_state_to_device(self.dopt, self.gan_device)
 
             self.gan_plotter = GAN_Plotter(self.env_name, self.gen_name, self.disc_name, self.training)
             self.ganloss = nn.BCELoss()
@@ -267,20 +353,23 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
         # encoder_only模式不训练GAN
         if self.encoder_only:
             return
-            
+        # 与 PreGANPlusEnhanced 一致：输入放到 GAN 设备，避免 MPS 上输入/参数设备不一致
+        embedding = embedding.to(self.gan_device)
+        schedule_data = schedule_data.to(self.gan_device)
+
         # Train discriminator (standard BCE)
         self.disc.zero_grad()
         new_schedule_data, _ = self.gen(embedding, schedule_data)
         probs = self.disc(schedule_data, new_schedule_data.detach())
         new_score, orig_score = run_simulation(self.env.stats, new_schedule_data), run_simulation(self.env.stats, schedule_data)
-        true_probs = torch.tensor([0, 1], dtype=torch.double) if new_score <= orig_score else torch.tensor([1, 0], dtype=torch.double)
+        true_probs = torch.tensor([0, 1], dtype=torch.float32, device=probs.device) if new_score <= orig_score else torch.tensor([1, 0], dtype=torch.float32, device=probs.device)
         disc_loss = self.ganloss(probs, true_probs.detach().clone())
         disc_loss.backward(); self.dopt.step()
 
         # Train generator
         self.gen.zero_grad()
         probs = self.disc(schedule_data, new_schedule_data)
-        true_probs = torch.tensor([0, 1], dtype=torch.double)
+        true_probs = torch.tensor([0, 1], dtype=torch.float32, device=probs.device)
         gen_loss = self.ganloss(probs, true_probs)
         gen_loss.backward(); self.gopt.step()
 
@@ -299,7 +388,8 @@ class AblationNoMultiObjectiveRecovery(PreGANPlusEnhancedRecovery):
         # 如果是encoder_only模式，直接返回原始决策
         if self.encoder_only:
             return original_decision
-            
+        embedding = embedding.to(self.gan_device)
+        schedule_data = schedule_data.to(self.gan_device)
         # Generator returns (new_schedule, predicted_migration_cost)
         new_schedule_data, predicted_migration_cost = self.gen(embedding, schedule_data)
         probs = self.disc(schedule_data, new_schedule_data)

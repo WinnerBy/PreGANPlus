@@ -16,14 +16,9 @@ modstat.py
 *.so
 logs/
 
-# Experiment data and logs (exclude all, but allow final archive)
+# Experiment data and logs（可由脚本重新生成）
 experiment_data/
-experiment_logs/stage4_*/
-experiment_logs/*.log
-!experiment_logs/FINAL_ARCHIVE/
-!experiment_logs/最终选择结果报告.md
-!experiment_logs/ALL_RESULTS_AGGREGATED.json
-!experiment_logs/OPTIMAL_RESULTS_FINAL_OPTIMIZED.json
+experiment_logs/
 
 # Distribution / packaging
 .Python
@@ -152,6 +147,11 @@ todo.txt
 graphernew.py
 
 
-# checkpoint
-# *.ckpt  # ENABLED for git tracking (training complete)
+# checkpoint（体积大，本地保留即可）
+*.ckpt
 *.ckpt.bak
+recovery/PreGANSrc/checkpoints/
+recovery/PreGANSrc/checkpointsplus/
+recovery/CMODLBSrc/checkpoints/
+recovery/PreGANSrc/data/simulator_1000_10/
+recovery/PreGANSrc/data/simulator_2000_8/

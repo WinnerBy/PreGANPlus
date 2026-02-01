@@ -23,7 +23,7 @@ MAIN_PY = PROJECT_ROOT / "main.py"
 LOGS_DIR = PROJECT_ROOT / "logs"
 DATA_TARGET_DIR = PROJECT_ROOT / "recovery" / "PreGANSrc" / "data" / "simulator"
 
-def modify_main_py_for_data_collection(num_steps=1000, new_containers=5):
+def modify_main_py_for_data_collection(num_steps=1000, new_containers=8):
     """修改main.py用于数据收集阶段"""
     print("=" * 70)
     print("阶段1：数据生成配置")
@@ -182,8 +182,8 @@ def main():
     )
     parser.add_argument('--steps', type=int, default=1000,
                        help='仿真步数（默认: 1000）')
-    parser.add_argument('--new-containers', type=int, default=5,
-                       help='每步新增容器数（默认: 5）')
+    parser.add_argument('--new-containers', type=int, default=8,
+                       help='每步新增容器数（默认: 8）')
     parser.add_argument('--log-dir', type=str, default='experiment_logs/stage1',
                        help='日志保存目录（默认: experiment_logs/stage1）')
     parser.add_argument('--config-only', action='store_true',

@@ -1,64 +1,38 @@
 # 实验结果分析
 
-**创建日期**: 2026-01-14  
-**实验日期**: 2026-01-12 至 2026-01-13  
-**总运行次数**: 116次
+**最后更新**: 2026-01
 
 ---
 
 ## 📚 文档导航
 
-本目录包含实验结果的详细分析：
+本目录包含**当前实验结果**与指标说明（旧版 Comparative_Analysis / Performance_Analysis / Detailed_Findings 已移除，以下为准）：
 
-1. **[对比分析](Comparative_Analysis.md)** - 方法间的全面对比
-2. **[性能指标分析](Performance_Analysis.md)** - 详细的性能指标分析
-3. **[详细发现](Detailed_Findings.md)** - 深入的发现和案例研究
-
----
-
-## 📊 结果文件位置
-
-所有结果文件保存在 `final_results/` 目录：
-
-- **数据**: `final_results/data/` - 最终选中的实验数据
-- **日志**: `final_results/logs/` - 最终选中的日志文件
-- **汇总**: `final_results/summary/` - 汇总数据和报告
-- **图表**: `final_results/plots/` - 最终对比图表
+1. **[Stage3 结果分析（挑选 5 次）](Stage3_Results_Analysis.md)** — 挑选规则与数据来源、指标说明、各方法运行性能分析、综合排名与消融结论（课程作业用）
+2. **[故障检测指标论文汇报](Fault_Detection_Metrics_For_Paper.md)** — 故障检测 P/R/F1 在论文中的汇报方式（以 Stage2 编码器为准）
+3. **[SLO/SLA 指标说明](SLO_SLA_Metrics_Explanation.md)** — slaviolations、numdestroyed 及两种违反率计算方式
 
 ---
 
-## 🎯 关键发现摘要
+## 📊 结果文件位置（当前）
 
-### MAMO-GAN vs TF-GAN ✅
-
-- 能耗降低: **-1.18%**
-- 响应时间改善: **-8.65%**
-- SLA违规减少: **-15.93%**
-- 迁移数增加: +10.19% (可接受)
-
-### FPE-GAN vs 传统方法 ✅
-
-- 迁移数减少: **21%-84%**
-- 响应时间优于大部分传统方法
-- 能耗与传统方法相当或略优
+- **Stage3 日志与 CSV**: `experiment_logs/stage3/`（含 `stage3_aggregated_5runs_selected.csv`、`stage3_aggregated_by_method.csv`）
+- **Stage2 日志**: `experiment_logs/stage2/`
+- **Stage1 日志**: `experiment_logs/stage1/`
 
 ---
 
-## 📈 对比图表
+## 🎯 关键发现摘要（当前实验）
 
-详细的对比图表请参考：
-- `final_results/plots/group1_pregán_vs_traditional/` - FPE-GAN vs 传统方法
-- `final_results/plots/group2_pregánplus_vs_pregán/` - TF-GAN vs FPE-GAN
-- `final_results/plots/group3_pregánplusenhanced_vs_others/` - MAMO-GAN vs Others
+- **PreGANPlusEnhanced（MAMO-GAN）**: 在挑选 5 次汇总中迁移最少（926.00±5.90）、方差最小、能耗在 GAN 系列最低，综合最优。见 [Stage3_Results_Analysis](Stage3_Results_Analysis.md)。
+- **消融**: NoTransformer 相对完整模型在迁移与稳定性上体现明显劣势；NoGAT、NoMigrationAware、NoMultiObjective 均在相应维度上体现组件贡献。
+- **传统方法**: 在“少迁移、高稳定”目标上均不如 PreGANPlusEnhanced。
 
 ---
 
 ## 🔗 相关文档
 
-- [方法设计文档](../01_Methods/README.md) - 三种GAN方法的详细设计
-- [实验设计文档](../02_Experiments/README.md) - 实验配置和流程
-- [最终结果报告](../../final_results/summary/最终选择结果报告.md) - 完整的结果报告
-
----
-
-**最后更新**: 2026-01-14
+- [方法设计文档](../01_Methods/README.md) — 三种 GAN 方法及消融
+- [实验设计文档](../02_Experiments/README.md) — 实验配置与 Stage1/2 分析
+- [Stage3_Results_Analysis](Stage3_Results_Analysis.md) — 当前推理结果（挑选 5 次）
+- [Stage2_Training_And_Analysis](../02_Experiments/Stage2_Training_And_Analysis.md) — 当前训练与消融

@@ -307,6 +307,9 @@ def load_dataset(folder, model):
 		anomaly_data, class_data = form_test_dataset(time_data_raw)
 		print(f"[数据加载] 未找到故障历史文件，使用统计方法生成标签")
 	
+	# 先加载schedule数据（在数据增强之前）
+	schedule_data_raw = load_npyfile(folder, schedule_filename)
+	
 	# 数据增强：重复异常样本以平衡类别（针对1.82%异常率）
 	from .constants import AUGMENT_ANOMALY_SAMPLES, AUGMENT_FACTOR
 	if AUGMENT_ANOMALY_SAMPLES:
@@ -321,10 +324,11 @@ def load_dataset(folder, model):
 				augmented_indices.extend(anomaly_indices)
 			
 			if len(augmented_indices) > 0:
-				# 复制异常样本并添加到数据集
+				# 复制异常样本并添加到数据集（包括schedule_data）
 				time_data_raw = np.vstack([time_data_raw, time_data_raw[augmented_indices]])
 				anomaly_data = np.vstack([anomaly_data, anomaly_data[augmented_indices]])
 				class_data = np.vstack([class_data, class_data[augmented_indices]])
+				schedule_data_raw = np.vstack([schedule_data_raw, schedule_data_raw[augmented_indices]])
 				
 				print(f"[数据增强] 异常样本从 {len(anomaly_indices)} 增强到 {len(anomaly_indices) * AUGMENT_FACTOR}")
 				print(f"[数据增强] 总样本数: {len(time_data_raw)}, 异常率: {anomaly_data.any(axis=1).sum() / len(time_data_raw) * 100:.2f}%")
@@ -332,15 +336,34 @@ def load_dataset(folder, model):
 	# 然后归一化数据用于训练
 	time_data = normalize_time_data(time_data_raw)
 	dtype = get_device_manager().get_dtype()  # 获取兼容的dtype
-	train_schedule_data = torch.tensor(load_npyfile(folder, schedule_filename), dtype=dtype)
+	train_schedule_data = torch.tensor(schedule_data_raw, dtype=dtype)
 	train_time_data = convert_to_windows(time_data, model)
 	return train_time_data, train_schedule_data, anomaly_data, class_data
 
 def load_on_the_fly_dataset(model, folder, stats):
 	train_time_data = load_npyfile(folder, data_filename)
 	time_data_raw = stats.time_series[-LATEST_WINDOW_SIZE:]  # 原始数据
-	# 在归一化之前生成标签（使用原始数据，更准确）
-	anomaly_data, class_data = form_test_dataset(time_data_raw)
+	# 与 Stage1 一致：优先使用 ADE 故障定义（若仿真环境提供 fault_history）
+	n_rows = time_data_raw.shape[0]
+	fault_history_window = None
+	if hasattr(stats, 'env') and stats.env is not None and hasattr(stats.env, 'get_fault_history'):
+		env_fault = stats.env.get_fault_history()
+		if env_fault:
+			# time_series 行与 interval 对应：行 i 对应 interval i-1（行 0 为初始）
+			n_full = len(stats.time_series)
+			fault_history_window = {}
+			for i in range(n_rows):
+				interval_id = (n_full - n_rows - 1) + i
+				fault_history_window[i] = env_fault.get(interval_id, {}) if interval_id >= 0 else {}
+	if fault_history_window is not None:
+		interval_time = 300.0
+		anomaly_data, class_data = form_test_dataset_with_ade_faults(
+			time_data_raw, fault_history_window, interval_time
+		)
+		print(f"[数据加载-在线] 使用ADE故障定义生成标签（与Stage1一致）")
+	else:
+		anomaly_data, class_data = form_test_dataset(time_data_raw)
+		print(f"[数据加载-在线] 无fault_history，使用统计方法生成标签")
 	# 然后归一化数据用于训练
 	time_data = normalize_test_time_data(time_data_raw, train_time_data)
 	train_schedule_data = stats.schedule_series[-LATEST_WINDOW_SIZE:]
@@ -349,8 +372,9 @@ def load_on_the_fly_dataset(model, folder, stats):
 
 def save_model(folder, fname, model, optimizer, epoch, accuracy_list):
 	path = os.path.join(folder, fname)
-	# if 'Att' in model.name: print(model.prototype)
-	if 'G' in model.name or 'D' in model.name: model.prototype = {}
+	# GAN 的 Gen/Disc 无 prototype，保存前清空以免写入无意义字段。
+	# 必须用前缀判断：仅 Gen_* / Disc_* 是 GAN 子模块；勿用 'G' in name 等规则，会误伤编码器（如 TransformerNoGAT_16）。
+	if model.name.startswith('Gen_') or model.name.startswith('Disc_'): model.prototype = {}
 	torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
@@ -374,8 +398,15 @@ def load_model(folder, fname, modelname):
 	if os.path.exists(path):
 		print(f"{color.GREEN}Loading pre-trained model: {model.name}{color.ENDC}")
 		checkpoint = torch.load(path, map_location=torch_device, weights_only=False)
-		model.load_state_dict(checkpoint['model_state_dict'])
+		state_dict = checkpoint['model_state_dict']
+		# 兼容 checkpoint 从包装模块保存时带 "gen." 前缀（如 PreGANPlus 中 self.gen = Gen_16()），加载到裸 Gen_16 时需去掉前缀
+		if state_dict and any(k.startswith('gen.') for k in state_dict):
+			state_dict = {k.replace('gen.', '', 1): v for k, v in state_dict.items()}
+		model.load_state_dict(state_dict)
 		model.prototype = checkpoint['model_prototypes']
+		# 保证 prototype 为 list，避免 checkpoint 中为 dict 时 triplet_loss 出现 KeyError
+		if isinstance(model.prototype, dict):
+			model.prototype = [model.prototype[k] for k in sorted(model.prototype.keys(), key=lambda x: int(x) if isinstance(x, str) else x)]
 		for i, p in enumerate(model.prototype):
 			p.requires_grad = False
 			model.prototype[i] = p.to(torch_device)
@@ -395,6 +426,13 @@ def load_model(folder, fname, modelname):
 		model.gat_graph = model.gat_graph.to(dgl_device)
 	
 	return model, optimizer, epoch, accuracy_list
+
+def move_optimizer_state_to_device(optimizer, device):
+	"""将优化器内部状态（exp_avg、exp_avg_sq 等）移到指定设备，避免 step() 时 mps/cpu 混用报错。"""
+	for state in optimizer.state.values():
+		for k, v in state.items():
+			if isinstance(v, torch.Tensor):
+				state[k] = v.to(device)
 
 def load_gan(folder, gfname, dfname, gmodelname, dmodelname):
 	gmodel, gopt, epoch, accuracy_list = load_model(folder, gfname, gmodelname)
@@ -425,11 +463,14 @@ def run_simulation(stats, schedule_data):
 
 def get_classes(embeddings, model):
 	class_list = []
+	protos = model.prototype if isinstance(model.prototype, list) else list(model.prototype.values()) if model.prototype else []
 	for e in embeddings:
 		if (e == 0).all().item():
 			class_list.append(-1); continue
-		distances = np.array([(torch.mean((e - p)**2)).item() for p in model.prototype])
-		class_list.append(np.argmin(distances))
+		if not protos:
+			class_list.append(-1); continue
+		distances = np.array([(torch.mean((e - p)**2)).item() for p in protos])
+		class_list.append(int(np.argmin(distances)))
 	return class_list
 
 def freeze(model):
