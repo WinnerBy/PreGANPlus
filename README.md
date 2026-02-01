@@ -3,7 +3,7 @@
 **Migration-Aware Multi-Objective GAN for Fault-Tolerant Edge Computing**
 
 <div align="center">
-  <a href="https://github.com/imperial-qore/PreGAN/blob/master/LICENSE">
+  <a href="https://github.com/WinnerBy/PreGANPlus/blob/master/LICENSE">
     <img src="https://img.shields.io/badge/License-BSD%203--Clause-red.svg" alt="License">
   </a>
   <a>
@@ -18,7 +18,7 @@
 
 ## 概述
 
-本项目实现 **MAMO-GAN**（Migration-Aware Multi-Objective GAN），一种用于边缘计算故障容忍的迁移感知多目标生成对抗网络。MAMO-GAN 在 FPE-GAN 和 TF-GAN 基础上，引入迁移感知生成器与多目标判别器，在少迁移、低能耗与 SLO 满足上取得综合优势。
+本项目实现 **MAMO-GAN**（Migration-Aware Multi-Objective GAN），一种用于边缘计算故障容忍的迁移感知多目标生成对抗网络。MAMO-GAN 在 FPE-GAN(PreGAN) 和 TF-GAN(PreGANPlus) 基础上，引入迁移感知生成器与多目标判别器，在少迁移、低能耗与 SLO 满足上取得综合优势。
 
 ### 方法命名（代码 ↔ 文档）
 
@@ -135,7 +135,6 @@ PreGANPlus/
 
 - **FPE-GAN**: Tuli et al., "PreGAN: Preemptive Migration Prediction Network for Proactive Fault-Tolerant Edge Computing", 2022
 - **TF-GAN**: Tuli et al., "PreGAN+: Semi-Supervised Fault Prediction and Preemptive Migration in Dynamic Mobile Edge Environments", 2024
-- **MAMO-GAN**: (待发表)
 
 ---
 
