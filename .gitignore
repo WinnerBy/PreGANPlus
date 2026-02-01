@@ -147,11 +147,7 @@ todo.txt
 graphernew.py
 
 
-# checkpoint（体积大，本地保留即可）
-*.ckpt
+# checkpoint 备份与备用数据目录（主 checkpoint 已提交，便于其他机器直接使用）
 *.ckpt.bak
-recovery/PreGANSrc/checkpoints/
-recovery/PreGANSrc/checkpointsplus/
-recovery/CMODLBSrc/checkpoints/
 recovery/PreGANSrc/data/simulator_1000_10/
 recovery/PreGANSrc/data/simulator_2000_8/
